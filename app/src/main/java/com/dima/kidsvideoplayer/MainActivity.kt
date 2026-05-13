@@ -1,0 +1,134 @@
+package com.dima.kidsvideoplayer
+
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import android.view.ViewTreeObserver
+import android.view.WindowInsetsController
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.navigation.compose.rememberNavController
+import com.dima.kidsvideoplayer.admin.LockTaskManager
+import com.dima.kidsvideoplayer.data.VideoRepository
+import com.dima.kidsvideoplayer.navigation.AppNavHost
+import com.dima.kidsvideoplayer.player.VideoPlayerManager
+import com.dima.kidsvideoplayer.ui.theme.KidsVideoPlayerTheme
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var lockTaskManager: LockTaskManager
+    private lateinit var videoRepository: VideoRepository
+    private lateinit var videoPlayerManager: VideoPlayerManager
+
+    // Track whether we're currently in kiosk/lock task mode
+    private var isLockTaskActive = mutableStateOf(false)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Initialize managers
+        lockTaskManager = LockTaskManager(this)
+        videoRepository = VideoRepository(this)
+        videoPlayerManager = VideoPlayerManager(this)
+
+        // Full immersive mode — hide status bar and navigation bar
+        enableEdgeToEdge()
+        hideSystemUI()
+
+        // Set up Compose content
+        setContent {
+            KidsVideoPlayerTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
+                    val context = LocalContext.current
+
+                    // Pass managers to NavHost via composition
+                    AppNavHost(
+                        navController = navController,
+                        lockTaskManager = lockTaskManager,
+                        videoRepository = videoRepository,
+                        videoPlayerManager = videoPlayerManager,
+                        isLockTaskActive = isLockTaskActive,
+                        onEnterKidMode = { enterKidMode() },
+                        onExitKidMode = { exitKidMode() }
+                    )
+                }
+            }
+        }
+
+        // Wait for content to be laid out, then splash screen disappears
+        val content: View = findViewById(android.R.id.content)
+        content.viewTreeObserver.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    content.viewTreeObserver.removeOnPreDrawListener(this)
+                    return true
+                }
+            }
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemUI()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        videoPlayerManager.release()
+    }
+
+    // ==============================
+    // Lock Task Mode Management
+    // ==============================
+
+    /**
+     * Enter Kid Mode: start Lock Task (Kiosk Mode).
+     * This pins the app to the screen so the child cannot leave.
+     */
+    private fun enterKidMode() {
+        Log.d(TAG, "Entering Kid Mode — starting Lock Task")
+        lockTaskManager.startKioskMode(this)
+        isLockTaskActive.value = true
+        hideSystemUI()
+    }
+
+    /**
+     * Exit Kid Mode: stop Lock Task.
+     * Called after parent successfully enters PIN code.
+     */
+    private fun exitKidMode() {
+        Log.d(TAG, "Exiting Kid Mode — stopping Lock Task")
+        lockTaskManager.stopKioskMode(this)
+        isLockTaskActive.value = false
+    }
+
+    // ==============================
+    // Full Immersive Mode
+    // ==============================
+
+    /**
+     * Hide status bar, navigation bar — full immersive sticky mode.
+     */
+    private fun hideSystemUI() {
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController.systemBarsBehavior =
+            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(android.view.WindowInsets.Type.systemBars())
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+}
