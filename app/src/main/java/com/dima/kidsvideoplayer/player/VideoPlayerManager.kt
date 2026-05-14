@@ -2,6 +2,8 @@ package com.dima.kidsvideoplayer.player
 
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -28,11 +30,20 @@ class VideoPlayerManager(private val context: Context) {
      * Initialize ExoPlayer with appropriate settings for a kids' video player.
      */
     fun initialize(): ExoPlayer {
+        // Return existing player if already initialized
+        player?.let { return it }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .setUsage(C.USAGE_MEDIA)
+            .build()
+
         val exoPlayer = ExoPlayer.Builder(context).build().apply {
             // Don't preload — save bandwidth
             playWhenReady = true
             // Repeat all items in the playlist
             repeatMode = Player.REPEAT_MODE_ALL
+            setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
         }
         player = exoPlayer
         return exoPlayer
