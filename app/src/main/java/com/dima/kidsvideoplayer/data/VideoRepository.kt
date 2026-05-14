@@ -9,12 +9,16 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 
 /**
  * Repository for storing and retrieving video URIs using DataStore (Preferences).
  *
- * URIs are stored as a comma-separated string under a single key.
+ * URIs are stored as a JSON array string under a single key.
  * Each URI should have been granted takePersistableUriPermission before saving.
+ *
+ * Backward compatibility: legacy pipe-delimited format is automatically detected
+ * and migrated to JSON array on first write.
  */
 class VideoRepository(private val context: Context) {
 
@@ -24,7 +28,30 @@ class VideoRepository(private val context: Context) {
 
     companion object {
         private val VIDEO_URIS_KEY = stringPreferencesKey("video_uris")
-        private const val SEPARATOR = "|"
+        private const val LEGACY_SEPARATOR = "|"
+    }
+
+    /**
+     * Serialize a list of URI strings into a JSON array string.
+     */
+    internal fun serialize(uris: List<String>): String {
+        val array = JSONArray()
+        uris.forEach { array.put(it) }
+        return array.toString()
+    }
+
+    /**
+     * Deserialize a raw stored string into a list of URI strings.
+     * Supports both JSON array format and legacy pipe-delimited format.
+     */
+    internal fun deserialize(raw: String): List<String> {
+        if (raw.isBlank()) return emptyList()
+        if (raw.trimStart().startsWith("[")) {
+            val array = JSONArray(raw)
+            return (0 until array.length()).map { array.getString(it) }
+        }
+        // Legacy format: pipe-delimited → migrate
+        return raw.split(LEGACY_SEPARATOR).filter { it.isNotBlank() }
     }
 
     /**
@@ -32,11 +59,7 @@ class VideoRepository(private val context: Context) {
      */
     val videoUris: Flow<List<String>> = context.dataStore.data.map { prefs ->
         val raw = prefs[VIDEO_URIS_KEY] ?: ""
-        if (raw.isBlank()) {
-            emptyList()
-        } else {
-            raw.split(SEPARATOR).filter { it.isNotBlank() }
-        }
+        deserialize(raw)
     }
 
     /**
@@ -45,12 +68,9 @@ class VideoRepository(private val context: Context) {
     suspend fun addVideoUri(uri: String) {
         context.dataStore.edit { prefs ->
             val current = prefs[VIDEO_URIS_KEY] ?: ""
-            val newList = if (current.isBlank()) {
-                uri
-            } else {
-                "$current$SEPARATOR$uri"
-            }
-            prefs[VIDEO_URIS_KEY] = newList
+            val existing = deserialize(current).toMutableList()
+            existing.add(uri)
+            prefs[VIDEO_URIS_KEY] = serialize(existing)
         }
     }
 
@@ -60,13 +80,13 @@ class VideoRepository(private val context: Context) {
     suspend fun addVideoUris(uris: List<String>) {
         context.dataStore.edit { prefs ->
             val current = prefs[VIDEO_URIS_KEY] ?: ""
-            val existing = current.split(SEPARATOR).filter { it.isNotBlank() }.toMutableList()
+            val existing = deserialize(current).toMutableList()
             for (uri in uris) {
                 if (uri !in existing) {
                     existing.add(uri)
                 }
             }
-            prefs[VIDEO_URIS_KEY] = existing.joinToString(SEPARATOR)
+            prefs[VIDEO_URIS_KEY] = serialize(existing)
         }
     }
 
@@ -76,8 +96,8 @@ class VideoRepository(private val context: Context) {
     suspend fun removeVideoUri(uri: String) {
         context.dataStore.edit { prefs ->
             val current = prefs[VIDEO_URIS_KEY] ?: ""
-            val uris = current.split(SEPARATOR).filter { it.isNotBlank() && it != uri }
-            prefs[VIDEO_URIS_KEY] = uris.joinToString(SEPARATOR)
+            val uris = deserialize(current).filter { it != uri }
+            prefs[VIDEO_URIS_KEY] = serialize(uris)
         }
     }
 
