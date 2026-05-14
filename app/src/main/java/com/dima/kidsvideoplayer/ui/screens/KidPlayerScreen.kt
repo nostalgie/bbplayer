@@ -99,7 +99,28 @@ fun KidPlayerScreen(
         // ==============================
         // Navigation Buttons (bottom)
         // ==============================
-        if (videoUris.size > 1) {
+        if (videoUris.isNotEmpty()) {
+            // Track playing state reactively so the play/pause icon updates
+            var isPlaying by remember {
+                mutableStateOf(
+                    exoPlayer.playWhenReady && exoPlayer.playbackState == Player.STATE_READY
+                )
+            }
+
+            // Listen for playback state changes to update the play/pause button icon
+            DisposableEffect(exoPlayer) {
+                val listener = object : Player.Listener {
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        isPlaying = playWhenReady && exoPlayer.playbackState == Player.STATE_READY
+                    }
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        isPlaying = exoPlayer.playWhenReady && playbackState == Player.STATE_READY
+                    }
+                }
+                exoPlayer.addListener(listener)
+                onDispose { exoPlayer.removeListener(listener) }
+            }
+
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -108,19 +129,21 @@ fun KidPlayerScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Previous button
-                BounceButton(
-                    text = "⏮",
-                    onClick = { videoPlayerManager.previous() },
-                    backgroundColor = Color(0xFF42A5F5),
-                    textColor = Color.White,
-                    size = 80.dp,
-                    fontSize = 36.sp
-                )
+                // Previous button (only when multiple videos)
+                if (videoUris.size > 1) {
+                    BounceButton(
+                        text = "⏮",
+                        onClick = { videoPlayerManager.previous() },
+                        backgroundColor = Color(0xFF42A5F5),
+                        textColor = Color.White,
+                        size = 80.dp,
+                        fontSize = 36.sp
+                    )
+                }
 
-                // Play/Pause button
+                // Play/Pause button (always visible when videos exist)
                 BounceButton(
-                    text = if (exoPlayer.isPlaying) "⏸" else "▶",
+                    text = if (isPlaying) "⏸" else "▶",
                     onClick = {
                         if (exoPlayer.isPlaying) {
                             exoPlayer.pause()
@@ -134,15 +157,17 @@ fun KidPlayerScreen(
                     fontSize = 36.sp
                 )
 
-                // Next button
-                BounceButton(
-                    text = "⏭",
-                    onClick = { videoPlayerManager.next() },
-                    backgroundColor = Color(0xFF42A5F5),
-                    textColor = Color.White,
-                    size = 80.dp,
-                    fontSize = 36.sp
-                )
+                // Next button (only when multiple videos)
+                if (videoUris.size > 1) {
+                    BounceButton(
+                        text = "⏭",
+                        onClick = { videoPlayerManager.next() },
+                        backgroundColor = Color(0xFF42A5F5),
+                        textColor = Color.White,
+                        size = 80.dp,
+                        fontSize = 36.sp
+                    )
+                }
             }
         }
 

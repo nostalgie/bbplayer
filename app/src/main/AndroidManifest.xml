@@ -36,6 +36,7 @@
             android:turnScreenOn="true"
             android:immersive="true"
             android:launchMode="singleTask"
+            android:clearTaskOnLaunch="true"
             android:resizeableActivity="false">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -55,16 +56,6 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
-
-        <!-- Foreground Service for ExoPlayer (Media3) -->
-        <service
-            android:name="androidx.media3.session.MediaSessionService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
 
     </application>
 
