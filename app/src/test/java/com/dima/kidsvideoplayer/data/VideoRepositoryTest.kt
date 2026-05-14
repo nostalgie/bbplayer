@@ -132,4 +132,59 @@ class VideoRepositoryTest {
             assertThat(uris).containsExactly("content://video/3")
         }
     }
+
+    // --- New tests for JSON array format and migration ---
+
+    @Test
+    fun addVideoUri_uriWithPipeCharacter_storedCorrectly() {
+        runBlocking {
+            val uriWithPipe = "content://com.provider/document|segment"
+            repository.addVideoUri(uriWithPipe)
+            val uris = repository.videoUris.first()
+            assertThat(uris).containsExactly(uriWithPipe)
+        }
+    }
+
+    @Test
+    fun addVideoUri_uriWithSpecialChars_storedCorrectly() = runBlocking {
+        val uriWithQuotes = "content://com.provider/doc\"name"
+        val uriWithBackslash = "content://com.provider/doc\\path"
+        val uriWithUnicode = "content://com.provider/видео"
+        repository.addVideoUris(listOf(uriWithQuotes, uriWithBackslash, uriWithUnicode))
+        val uris = repository.videoUris.first()
+        assertThat(uris).containsExactly(uriWithQuotes, uriWithBackslash, uriWithUnicode).inOrder()
+    }
+
+    @Test
+    fun migration_fromPipeDelimited_readsOldFormat() {
+        // Simulate reading legacy pipe-delimited data
+        val legacy = "content://video/1|content://video/2|content://video/3"
+        val uris = repository.deserialize(legacy)
+        assertThat(uris).containsExactly(
+            "content://video/1",
+            "content://video/2",
+            "content://video/3"
+        ).inOrder()
+    }
+
+    @Test
+    fun migration_afterWrite_dataIsJsonFormat() {
+        // Verify that deserialize reads legacy pipe-delimited format
+        val legacy = "content://video/1|content://video/2"
+        val uris = repository.deserialize(legacy)
+        assertThat(uris).containsExactly("content://video/1", "content://video/2").inOrder()
+
+        // Verify that serialize produces JSON array format
+        val merged = uris + "content://video/3"
+        val jsonOutput = repository.serialize(merged)
+        assertThat(jsonOutput.trimStart()).startsWith("[")
+
+        // Verify the JSON output round-trips through deserialize correctly
+        val roundTripped = repository.deserialize(jsonOutput)
+        assertThat(roundTripped).containsExactly(
+            "content://video/1",
+            "content://video/2",
+            "content://video/3"
+        ).inOrder()
+    }
 }

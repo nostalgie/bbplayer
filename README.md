@@ -39,7 +39,7 @@ app/src/main/java/com/dima/kidsvideoplayer/
 │   └── LockTaskManager.kt       # Утилита: startLockTask/stopLockTask, Device Owner check
 │
 ├── data/
-│   └── VideoRepository.kt       # DataStore Preferences: хранение URI видео (pipe-separated)
+│   └── VideoRepository.kt       # DataStore Preferences: хранение URI видео (JSON массив)
 │
 ├── navigation/
 │   └── AppNavHost.kt            # NavHost: kid_player ↔ parent_dashboard
@@ -118,7 +118,8 @@ Long press "v1.0" (3 сек)
 
 ### `VideoRepository`
 - DataStore Preferences с ключом `video_uris`
-- URI хранятся как pipe-separated строка (`|`)
+- URI хранятся как JSON массив (`JSONArray`)
+- Обратная совместимость: старый формат с `|` разделителем читается автоматически и мигрируется при первой записи
 - `videoUris: Flow<List<String>>` — реактивный поток
 
 ### `VideoPlayerManager`
@@ -181,8 +182,8 @@ adb shell dpm set-device-owner com.dima.kidsvideoplayer/.admin.MyDeviceAdminRece
 
 2. **SAF URI** — URI от SAF могут инвалидироваться если файл удалён/перемещён. Нет проверки валидности URI при загрузке.
 
-3. **DataStore** — URI хранятся как строка с `|` разделителем. Если URI содержит `|`, будет проблема. Лучше заменить на JSON массив в будущем.
+3. **DataStore** — URI хранятся как JSON массив. Старый формат с `|` разделителем поддерживается для чтения и автоматически мигрируется на JSON при первой записи.
 
 4. **ExoPlayer** — используется `PlayerView` через `AndroidView` в Compose. Контроллер скрыт (`useController = false`), навигация через кастомные кнопки.
 
-5. **Compose** — `remember { videoPlayerManager.initialize() }` создаёт один экземпляр ExoPlayer на время жизни KidPlayerScreen. При пересоздании Composition (например, поворот) игрок пересоздаётся.
+5. **Compose** — `remember { videoPlayerManager.initialize() }` создаёт один экземпляр ExoPlayer на время жизни KidPlayerScreen. При пересоздании Composition (например, поворот) плеер пересоздаётся.
