@@ -18,3 +18,5 @@ local.properties
 # Android build output
 /app/build/
 /build/
+/decoder_ffmpeg/build/
+decoder_ffmpeg/src/main/jni/ffmpeg

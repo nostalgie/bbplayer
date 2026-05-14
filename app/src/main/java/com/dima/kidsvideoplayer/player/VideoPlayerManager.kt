@@ -2,12 +2,15 @@ package com.dima.kidsvideoplayer.player
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 
 /**
  * Manages ExoPlayer lifecycle and playback operations.
@@ -38,13 +41,31 @@ class VideoPlayerManager(private val context: Context) {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        val exoPlayer = ExoPlayer.Builder(context).build().apply {
-            // Don't preload — save bandwidth
-            playWhenReady = true
-            // Repeat all items in the playlist
-            repeatMode = Player.REPEAT_MODE_ALL
-            setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
-        }
+        // Enable software decoder fallback for codecs not supported by hardware
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+
+        val exoPlayer = ExoPlayer.Builder(context, renderersFactory)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+            .apply {
+                // Don't preload — save bandwidth
+                playWhenReady = true
+                // Repeat all items in the playlist
+                repeatMode = Player.REPEAT_MODE_ALL
+            }
+
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(TAG, "Player error: ${error.message}", error)
+                if (error.cause is MediaCodecRenderer.DecoderInitializationException) {
+                    val decoderError = error.cause as MediaCodecRenderer.DecoderInitializationException
+                    Log.e(TAG, "Decoder init failed: mimeType=${decoderError.mimeType}, " +
+                        "secureDecoderRequired=${decoderError.secureDecoderRequired}")
+                }
+            }
+        })
         player = exoPlayer
         return exoPlayer
     }

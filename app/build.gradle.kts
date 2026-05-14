@@ -76,6 +76,12 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
+    // DASH and HLS streaming support
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+
+    // FFmpeg software audio decoder extension (local module with native FFmpeg libraries)
+    implementation(project(":decoder_ffmpeg"))
 
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
