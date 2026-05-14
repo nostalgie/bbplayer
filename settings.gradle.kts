@@ -19,3 +19,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "KidsVideoPlayer"
 include(":app")
+include(":decoder_ffmpeg")
