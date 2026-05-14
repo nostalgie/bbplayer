@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -137,17 +138,23 @@ fun KidPlayerScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Previous button (only when multiple videos)
-                if (videoUris.size > 1) {
-                    BounceButton(
-                        text = "⏮",
-                        onClick = { videoPlayerManager.previous() },
-                        backgroundColor = BlueButton,
-                        textColor = Color.White,
-                        size = 80.dp,
-                        fontSize = 36.sp
-                    )
-                }
+                // Previous button — always visible, disabled (grayed out) when single video
+                val hasMultipleVideos = videoUris.size > 1
+                BounceButton(
+                    text = "⏮",
+                    onClick = {
+                        if (hasMultipleVideos) {
+                            val currentIndex = exoPlayer.currentMediaItemIndex
+                            val newIndex = if (currentIndex == 0) videoUris.lastIndex else currentIndex - 1
+                            exoPlayer.seekToDefaultPosition(newIndex)
+                        }
+                    },
+                    backgroundColor = BlueButton,
+                    textColor = Color.White,
+                    size = 80.dp,
+                    fontSize = 36.sp,
+                    modifier = if (!hasMultipleVideos) Modifier.alpha(0.4f) else Modifier
+                )
 
                 // Seek backward button
                 SeekButton(
@@ -179,17 +186,22 @@ fun KidPlayerScreen(
                     onSeek = { offsetMs -> videoPlayerManager.seekForward(offsetMs) }
                 )
 
-                // Next button (only when multiple videos)
-                if (videoUris.size > 1) {
-                    BounceButton(
-                        text = "⏭",
-                        onClick = { videoPlayerManager.next() },
-                        backgroundColor = BlueButton,
-                        textColor = Color.White,
-                        size = 80.dp,
-                        fontSize = 36.sp
-                    )
-                }
+                // Next button — always visible, disabled (grayed out) when single video
+                BounceButton(
+                    text = "⏭",
+                    onClick = {
+                        if (hasMultipleVideos) {
+                            val currentIndex = exoPlayer.currentMediaItemIndex
+                            val newIndex = if (currentIndex == videoUris.lastIndex) 0 else currentIndex + 1
+                            exoPlayer.seekToDefaultPosition(newIndex)
+                        }
+                    },
+                    backgroundColor = BlueButton,
+                    textColor = Color.White,
+                    size = 80.dp,
+                    fontSize = 36.sp,
+                    modifier = if (!hasMultipleVideos) Modifier.alpha(0.4f) else Modifier
+                )
             }
         }
 

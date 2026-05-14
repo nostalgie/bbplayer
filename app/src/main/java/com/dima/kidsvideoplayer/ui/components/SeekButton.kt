@@ -2,6 +2,7 @@ package com.dima.kidsvideoplayer.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -19,12 +20,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dima.kidsvideoplayer.player.SeekAccelerator
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * Seek button with tap (±10s) and long-press (progressive acceleration) support.
  *
  * Visual styling matches [BounceButton] — spring animation, rounded shape, border.
+ *
+ * ## How it works
+ * - **Single tap** (press & release within 400 ms): seeks 10 seconds.
+ * - **Long press** (hold past 400 ms): starts continuous seeking with progressive
+ *   acceleration via [SeekAccelerator]. The seek offset label is shown below the icon.
+ *
+ * ## Why no flickering
+ * The previous implementation used `withTimeoutOrNull` around `tryAwaitRelease()`,
+ * which cancelled the press gesture and caused `detectTapGestures` to restart
+ * immediately (finger still down → new press → rapid toggle → flicker).
+ *
+ * The fix: launch continuous seeking in a **separate coroutine** and let
+ * `tryAwaitRelease()` suspend naturally until the finger lifts. No cancellation
+ * of the press gesture means no restart loop.
  *
  * @param icon Material Icon to display (e.g. FastRewind / FastForward)
  * @param contentDescription Accessibility description
@@ -40,6 +56,12 @@ fun SeekButton(
 ) {
     var isPressed by remember { mutableStateOf(false) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val accelerator = remember { SeekAccelerator() }
+
+    // Keep a reference to the latest onSeek callback so the coroutine always
+    // invokes the current lambda even after recomposition.
+    val currentOnSeek by rememberUpdatedState(onSeek)
 
     // Spring-based scale animation on press (matches BounceButton)
     val scale by animateFloatAsState(
@@ -74,36 +96,42 @@ fun SeekButton(
                 scaleY = scale * pulseScale
             }
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    isPressed = true
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        accelerator.reset()
 
-                    try {
-                        // Wait for finger lift or long-press timeout (400ms)
-                        val up = withTimeoutOrNull(400L) {
-                            waitForUpOrCancellation()
-                        }
-
-                        if (up != null) {
-                            // Finger lifted quickly — single tap: seek 10 seconds
-                            onSeek(10_000L)
-                        } else {
-                            // Long press: progressively accelerate seeking
-                            val accelerator = SeekAccelerator()
+                        // Launch continuous seeking in a separate coroutine so
+                        // that tryAwaitRelease() is never cancelled by a timeout.
+                        val seekJob = scope.launch {
+                            delay(400L) // grace period before continuous mode
                             seekLabel = "${accelerator.currentOffset}s"
-
-                            while (true) {
+                            while (isActive) {
                                 val offsetMs = accelerator.nextOffsetMs()
-                                onSeek(offsetMs)
+                                currentOnSeek(offsetMs)
                                 seekLabel = "${accelerator.currentOffset}s"
-                                delay(400L)
+                                delay(300L)
                             }
                         }
-                    } finally {
-                        isPressed = false
-                        seekLabel = null
+
+                        try {
+                            // Suspend until the user lifts their finger.
+                            // This is NEVER cancelled by a timeout, so the gesture
+                            // handler stays alive and no restart loop occurs.
+                            tryAwaitRelease()
+
+                            // If the job is still active, the user released before
+                            // the 400 ms grace period → treat as a single tap.
+                            if (seekJob.isActive) {
+                                currentOnSeek(10_000L)
+                            }
+                        } finally {
+                            seekJob.cancel()
+                            isPressed = false
+                            seekLabel = null
+                        }
                     }
-                }
+                )
             },
         shape = RoundedCornerShape(20.dp),
         color = backgroundColor,
