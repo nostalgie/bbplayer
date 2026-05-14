@@ -38,7 +38,8 @@ import kotlinx.coroutines.launch
 fun ParentDashboardScreen(
     videoRepository: VideoRepository,
     onBackToKidMode: () -> Unit,
-    onNavigateToFilePicker: () -> Unit = {}
+    onNavigateToFilePicker: () -> Unit = {},
+    onExitApp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -200,6 +201,25 @@ fun ParentDashboardScreen(
                 textColor = Color.White,
                 size = 100.dp,
                 fontSize = 14.sp
+            )
+        }
+
+        // ==============================
+        // Exit App Button
+        // ==============================
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            BounceButton(
+                text = "Выйти",
+                onClick = onExitApp,
+                backgroundColor = Color(0xFFB71C1C),
+                textColor = Color.White,
+                icon = "🚪",
+                size = 100.dp,
+                fontSize = 16.sp
             )
         }
     }

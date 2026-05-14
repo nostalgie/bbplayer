@@ -1,5 +1,6 @@
 package com.dima.kidsvideoplayer
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -61,7 +62,8 @@ class MainActivity : ComponentActivity() {
                         videoPlayerManager = videoPlayerManager,
                         isLockTaskActive = isLockTaskActive,
                         onEnterKidMode = { enterKidMode() },
-                        onExitKidMode = { exitKidMode() }
+                        onExitKidMode = { exitKidMode() },
+                        onExitApp = { exitApp() }
                     )
                 }
             }
@@ -79,13 +81,27 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.flags = intent.flags or Intent.FLAG_ACTIVITY_SINGLE_TOP
+    }
+
     override fun onResume() {
         super.onResume()
-        hideSystemUI()
+        // Only hide system UI when in kiosk/lock-task mode
+        if (isLockTaskActive.value) {
+            hideSystemUI()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        // Safety net: ensure kiosk mode is always released
+        try {
+            lockTaskManager.stopKioskMode(this)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping kiosk mode in onDestroy", e)
+        }
         videoPlayerManager.release()
     }
 
@@ -112,6 +128,16 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Exiting Kid Mode — stopping Lock Task")
         lockTaskManager.stopKioskMode(this)
         isLockTaskActive.value = false
+    }
+
+    /**
+     * Exit the app completely.
+     * Called from the Parent Dashboard "Exit App" button.
+     */
+    private fun exitApp() {
+        Log.d(TAG, "Exiting app from Parent Dashboard")
+        exitKidMode()
+        finishAffinity()
     }
 
     // ==============================

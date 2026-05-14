@@ -40,7 +40,8 @@ fun AppNavHost(
     videoPlayerManager: VideoPlayerManager,
     isLockTaskActive: MutableState<Boolean>,
     onEnterKidMode: () -> Unit,
-    onExitKidMode: () -> Unit
+    onExitKidMode: () -> Unit,
+    onExitApp: () -> Unit = {}
 ) {
     NavHost(
         navController = navController,
@@ -71,7 +72,8 @@ fun AppNavHost(
                 },
                 onNavigateToFilePicker = {
                     navController.navigate(Routes.FILE_PICKER)
-                }
+                },
+                onExitApp = onExitApp
             )
         }
 
