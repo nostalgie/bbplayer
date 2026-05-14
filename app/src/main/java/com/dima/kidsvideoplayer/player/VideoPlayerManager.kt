@@ -133,6 +133,30 @@ class VideoPlayerManager(
     }
 
     /**
+     * Seek forward by the given offset in milliseconds, clamped to the video duration.
+     */
+    fun seekForward(offsetMs: Long) {
+        val exoPlayer = player ?: return
+        val newPosition = exoPlayer.currentPosition + offsetMs
+        val duration = exoPlayer.duration
+        val clamped = if (duration > 0) {
+            newPosition.coerceAtMost(duration)
+        } else {
+            newPosition
+        }
+        exoPlayer.seekTo(clamped)
+    }
+
+    /**
+     * Seek backward by the given offset in milliseconds, clamped to 0.
+     */
+    fun seekBackward(offsetMs: Long) {
+        val exoPlayer = player ?: return
+        val newPosition = exoPlayer.currentPosition - offsetMs
+        exoPlayer.seekTo(newPosition.coerceAtLeast(0))
+    }
+
+    /**
      * Get total number of items in the playlist.
      */
     fun getMediaItemCount(): Int {
