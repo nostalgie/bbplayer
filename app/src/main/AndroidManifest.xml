@@ -5,9 +5,9 @@
     <!-- ExoPlayer may need internet for some media sources -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Foreground service for ExoPlayer playback -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Foreground service for background audio playback (reserved for future use) -->
+    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> -->
+    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" /> -->
 
     <!-- Keep screen on during video playback -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />

@@ -2,8 +2,6 @@ package com.dima.kidsvideoplayer.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -18,6 +16,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+// Animation constants
+private const val PRESSED_SCALE = 0.75f
+private const val PULSE_SCALE = 1.04f
+private const val BOUNCE_RESET_DELAY_MS = 250L
+private const val PULSE_DURATION_MS = 800
 
 /**
  * Kid-friendly button with spring bounce animation on press.
@@ -47,7 +51,7 @@ fun BounceButton(
 
     // Spring-based scale animation on press
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.75f else 1f,
+        targetValue = if (isPressed) PRESSED_SCALE else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioHighBouncy,
             stiffness = Spring.StiffnessMedium
@@ -59,9 +63,9 @@ fun BounceButton(
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.04f,
+        targetValue = PULSE_SCALE,
         animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = EaseInOutSine),
+            animation = tween(PULSE_DURATION_MS, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulse_scale"
@@ -70,7 +74,7 @@ fun BounceButton(
     // Reset bounce after short delay
     LaunchedEffect(isPressed) {
         if (isPressed) {
-            kotlinx.coroutines.delay(250)
+            kotlinx.coroutines.delay(BOUNCE_RESET_DELAY_MS)
             isPressed = false
         }
     }
@@ -121,28 +125,4 @@ fun BounceButton(
             }
         }
     }
-}
-
-/**
- * Navigation button variant for prev/next video controls.
- */
-@Composable
-fun NavBounceButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    backgroundColor: Color = Color(0xFF42A5F5),
-    textColor: Color = Color.White,
-    icon: String = ""
-) {
-    BounceButton(
-        text = text,
-        onClick = onClick,
-        backgroundColor = backgroundColor,
-        textColor = textColor,
-        icon = icon,
-        size = 90.dp,
-        fontSize = 32.sp,
-        modifier = modifier
-    )
 }

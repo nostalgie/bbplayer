@@ -3,6 +3,7 @@ package com.dima.kidsvideoplayer.player
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -20,8 +21,18 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
  *   - Call [play] / [pause] / [seekTo] for playback control
  *   - Call [setVideoList] to set the playlist
  *   - Call [release] when done (e.g., in Activity.onDestroy)
+ *
+ * URI schemes supported:
+ *   - `content://` — SAF URIs with persistable permission (preferred)
+ *   - `file://` — direct file paths (requires MANAGE_EXTERNAL_STORAGE)
+ *
+ * @param context Application context (use applicationContext to avoid leaks)
+ * @param onError Optional callback invoked when a playback error occurs
  */
-class VideoPlayerManager(private val context: Context) {
+class VideoPlayerManager(
+    private val context: Context,
+    private val onError: ((PlaybackException) -> Unit)? = null
+) {
 
     var player: ExoPlayer? = null
         private set
@@ -64,6 +75,7 @@ class VideoPlayerManager(private val context: Context) {
                     Log.e(TAG, "Decoder init failed: mimeType=${decoderError.mimeType}, " +
                         "secureDecoderRequired=${decoderError.secureDecoderRequired}")
                 }
+                onError?.invoke(error)
             }
         })
         player = exoPlayer
@@ -84,12 +96,18 @@ class VideoPlayerManager(private val context: Context) {
             exoPlayer.addMediaItem(mediaItem)
         }
 
+        val safeIndex = if (uris.isNotEmpty()) {
+            startIndex.coerceIn(0, uris.size - 1)
+        } else {
+            0
+        }
+
         if (uris.isNotEmpty()) {
-            exoPlayer.seekToDefaultPosition(startIndex.coerceAtMost(uris.size - 1))
+            exoPlayer.seekToDefaultPosition(safeIndex)
             exoPlayer.prepare()
         }
 
-        currentMediaItemIndex = startIndex
+        currentMediaItemIndex = safeIndex
     }
 
     /**
@@ -127,6 +145,14 @@ class VideoPlayerManager(private val context: Context) {
     fun release() {
         player?.release()
         player = null
+    }
+
+    /**
+     * Set the player instance directly — for testing only.
+     */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun setPlayerForTesting(exoPlayer: ExoPlayer?) {
+        player = exoPlayer
     }
 
     companion object {

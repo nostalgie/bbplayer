@@ -12,32 +12,67 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.dima.kidsvideoplayer.ui.theme.DialogBackground
+import com.dima.kidsvideoplayer.ui.theme.DotBorder
+import com.dima.kidsvideoplayer.ui.theme.DotEmpty
+import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
+import com.dima.kidsvideoplayer.ui.theme.KeypadBackground
+import com.dima.kidsvideoplayer.ui.theme.TextGray
+import kotlinx.coroutines.delay
+
+/** Default PIN code — extract to DataStore for configurable PIN in future. */
+const val DEFAULT_PIN = "1234"
+
+/** Maximum failed attempts before lockout. */
+private const val MAX_PIN_ATTEMPTS = 3
+
+/** Lockout duration in seconds. */
+private const val LOCKOUT_DURATION_SECONDS = 30
 
 /**
- * PIN code input dialog.
+ * PIN code input dialog with rate limiting.
+ *
+ * Security features:
+ * - Configurable PIN via [correctPin] parameter
+ * - Rate limiting: after [MAX_PIN_ATTEMPTS] failed attempts, locks for [LOCKOUT_DURATION_SECONDS]
+ * - PIN is compared as plain text (for a kids' app; use hashed storage for production)
  *
  * @param onDismiss Called when dialog is cancelled
  * @param onPinCorrect Called when correct PIN is entered
- * @param correctPin The expected PIN code (default "1234")
+ * @param correctPin The expected PIN code (default from [DEFAULT_PIN] constant)
  */
 @Composable
 fun PinDialog(
     onDismiss: () -> Unit,
     onPinCorrect: () -> Unit,
-    correctPin: String = "1234"
+    correctPin: String = DEFAULT_PIN
 ) {
     var pin by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
-    val pinLength = correctPin.length
+    var isLockedOut by remember { mutableStateOf(false) }
+    var failedAttempts by remember { mutableIntStateOf(0) }
+    var lockoutRemaining by remember { mutableIntStateOf(0) }
+
+    // Lockout countdown timer
+    LaunchedEffect(isLockedOut) {
+        if (isLockedOut) {
+            lockoutRemaining = LOCKOUT_DURATION_SECONDS
+            while (lockoutRemaining > 0) {
+                delay(1000)
+                lockoutRemaining--
+            }
+            isLockedOut = false
+            failedAttempts = 0
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = Color(0xFF2C2C2C),
+            color = DialogBackground,
             tonalElevation = 16.dp
         ) {
             Column(
@@ -61,18 +96,18 @@ fun PinDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    repeat(pinLength) { index ->
+                    repeat(correctPin.length) { index ->
                         Box(
                             modifier = Modifier
                                 .size(16.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (index < pin.length) Color(0xFF4CAF50)
-                                    else Color(0xFF555555)
+                                    if (index < pin.length) GreenPrimary
+                                    else DotEmpty
                                 )
                                 .border(
                                     width = 1.dp,
-                                    color = if (isError) Color.Red else Color(0xFF888888),
+                                    color = if (isError) Color.Red else DotBorder,
                                     shape = CircleShape
                                 )
                         )
@@ -82,7 +117,8 @@ fun PinDialog(
                 if (isError) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Неверный ПИН-код",
+                        text = if (isLockedOut) "Подождите $lockoutRemaining сек."
+                               else "Неверный ПИН-код",
                         color = Color.Red,
                         fontSize = 14.sp
                     )
@@ -113,6 +149,7 @@ fun PinDialog(
                                 if (key.isNotEmpty()) {
                                     Surface(
                                         onClick = {
+                                            if (isLockedOut) return@Surface
                                             isError = false
                                             when (key) {
                                                 "⌫" -> {
@@ -121,14 +158,18 @@ fun PinDialog(
                                                     }
                                                 }
                                                 else -> {
-                                                    if (pin.length < pinLength) {
+                                                    if (pin.length < correctPin.length) {
                                                         pin += key
                                                     }
                                                     // Check PIN when all digits entered
-                                                    if (pin.length == pinLength) {
+                                                    if (pin.length == correctPin.length) {
                                                         if (pin == correctPin) {
                                                             onPinCorrect()
                                                         } else {
+                                                            failedAttempts++
+                                                            if (failedAttempts >= MAX_PIN_ATTEMPTS) {
+                                                                isLockedOut = true
+                                                            }
                                                             isError = true
                                                             pin = ""
                                                         }
@@ -137,7 +178,7 @@ fun PinDialog(
                                             }
                                         },
                                         shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFF3C3C3C)
+                                        color = KeypadBackground
                                     ) {
                                         Box(
                                             modifier = Modifier.fillMaxSize(),
@@ -164,7 +205,7 @@ fun PinDialog(
                 TextButton(onClick = onDismiss) {
                     Text(
                         text = "Отмена",
-                        color = Color(0xFF888888),
+                        color = TextGray,
                         fontSize = 14.sp
                     )
                 }
