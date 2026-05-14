@@ -12,11 +12,17 @@
     <!-- Keep screen on during video playback -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Storage permissions for file browser -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <application
         android:name=".KidsVideoApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.KidsVideoPlayer"
         tools:targetApi="34">

@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
+import com.dima.kidsvideoplayer.ui.screens.FilePickerScreen
 import com.dima.kidsvideoplayer.ui.screens.KidPlayerScreen
 import com.dima.kidsvideoplayer.ui.screens.ParentDashboardScreen
 
@@ -17,6 +18,7 @@ import com.dima.kidsvideoplayer.ui.screens.ParentDashboardScreen
 object Routes {
     const val KID_PLAYER = "kid_player"
     const val PARENT_DASHBOARD = "parent_dashboard"
+    const val FILE_PICKER = "file_picker"
 }
 
 /**
@@ -66,6 +68,18 @@ fun AppNavHost(
                     // Navigate back to kid player and enter kiosk mode
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
                     onEnterKidMode()
+                },
+                onNavigateToFilePicker = {
+                    navController.navigate(Routes.FILE_PICKER)
+                }
+            )
+        }
+
+        composable(Routes.FILE_PICKER) {
+            FilePickerScreen(
+                videoRepository = videoRepository,
+                onBack = {
+                    navController.popBackStack(Routes.PARENT_DASHBOARD, inclusive = false)
                 }
             )
         }

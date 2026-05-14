@@ -37,7 +37,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ParentDashboardScreen(
     videoRepository: VideoRepository,
-    onBackToKidMode: () -> Unit
+    onBackToKidMode: () -> Unit,
+    onNavigateToFilePicker: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -101,20 +102,35 @@ fun ParentDashboardScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         // ==============================
-        // Add Video Button
+        // Add Video Buttons
         // ==============================
-        BounceButton(
-            text = "Добавить",
-            onClick = {
-                videoPickerLauncher.launch(arrayOf("video/*"))
-            },
-            backgroundColor = Color(0xFFFF9800),
-            textColor = Color.White,
-            icon = "📁",
-            size = 120.dp,
-            fontSize = 24.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BounceButton(
+                text = "Добавить файл",
+                onClick = {
+                    videoPickerLauncher.launch(arrayOf("video/*"))
+                },
+                backgroundColor = Color(0xFFFF9800),
+                textColor = Color.White,
+                icon = "📄",
+                size = 120.dp,
+                fontSize = 18.sp
+            )
+
+            BounceButton(
+                text = "Из папки",
+                onClick = onNavigateToFilePicker,
+                backgroundColor = Color(0xFF2196F3),
+                textColor = Color.White,
+                icon = "📂",
+                size = 120.dp,
+                fontSize = 18.sp
+            )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 

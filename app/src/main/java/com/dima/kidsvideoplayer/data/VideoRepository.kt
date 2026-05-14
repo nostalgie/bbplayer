@@ -55,6 +55,22 @@ class VideoRepository(private val context: Context) {
     }
 
     /**
+     * Add multiple video URIs to the list (batch add with deduplication).
+     */
+    suspend fun addVideoUris(uris: List<String>) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[VIDEO_URIS_KEY] ?: ""
+            val existing = current.split(SEPARATOR).filter { it.isNotBlank() }.toMutableList()
+            for (uri in uris) {
+                if (uri !in existing) {
+                    existing.add(uri)
+                }
+            }
+            prefs[VIDEO_URIS_KEY] = existing.joinToString(SEPARATOR)
+        }
+    }
+
+    /**
      * Remove a video URI from the list.
      */
     suspend fun removeVideoUri(uri: String) {
