@@ -1,12 +1,13 @@
 package com.dima.kidsvideoplayer
 
 import android.app.Application
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
 import android.util.Log
 
+/**
+ * Application class for KidsVideoPlayer.
+ * Currently used only for initialization logging.
+ * Can be extended for DI setup, DataStore initialization, etc.
+ */
 class KidsVideoApp : Application() {
 
     override fun onCreate() {

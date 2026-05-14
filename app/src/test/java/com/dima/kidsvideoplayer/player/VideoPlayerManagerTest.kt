@@ -34,14 +34,8 @@ class VideoPlayerManagerTest {
         context = ApplicationProvider.getApplicationContext()
         manager = VideoPlayerManager(context)
         mockPlayer = mock()
-        // Inject mock player via reflection so we can test logic without a real ExoPlayer
-        setPlayerField(mockPlayer)
-    }
-
-    private fun setPlayerField(player: ExoPlayer?) {
-        val field = VideoPlayerManager::class.java.getDeclaredField("player")
-        field.isAccessible = true
-        field.set(manager, player)
+        // Inject mock player via test-only setter
+        manager.setPlayerForTesting(mockPlayer)
     }
 
     // --- initialize() ---
@@ -82,8 +76,8 @@ class VideoPlayerManagerTest {
 
         // startIndex should be coerced to last valid index (1)
         verify(mockPlayer).seekToDefaultPosition(1)
-        // The field is set to the original startIndex value
-        assertThat(manager.currentMediaItemIndex).isEqualTo(10)
+        // currentMediaItemIndex is now also coerced (was a bug before fix)
+        assertThat(manager.currentMediaItemIndex).isEqualTo(1)
     }
 
     @Test
@@ -97,7 +91,7 @@ class VideoPlayerManagerTest {
 
     @Test
     fun setVideoList_doesNothingWhenPlayerIsNull() {
-        setPlayerField(null)
+        manager.setPlayerForTesting(null)
         // Should not throw
         manager.setVideoList(listOf("content://media/1"))
     }
@@ -126,7 +120,7 @@ class VideoPlayerManagerTest {
 
     @Test
     fun next_doesNothingWhenPlayerIsNull() {
-        setPlayerField(null)
+        manager.setPlayerForTesting(null)
         // Should not throw
         manager.next()
     }
@@ -155,7 +149,7 @@ class VideoPlayerManagerTest {
 
     @Test
     fun previous_doesNothingWhenPlayerIsNull() {
-        setPlayerField(null)
+        manager.setPlayerForTesting(null)
         // Should not throw
         manager.previous()
     }
@@ -171,7 +165,7 @@ class VideoPlayerManagerTest {
 
     @Test
     fun getMediaItemCount_returnsZeroWhenPlayerIsNull() {
-        setPlayerField(null)
+        manager.setPlayerForTesting(null)
 
         assertThat(manager.getMediaItemCount()).isEqualTo(0)
     }
@@ -188,7 +182,7 @@ class VideoPlayerManagerTest {
 
     @Test
     fun release_whenPlayerIsNull_doesNotThrow() {
-        setPlayerField(null)
+        manager.setPlayerForTesting(null)
         // Should not throw
         manager.release()
     }

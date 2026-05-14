@@ -14,8 +14,11 @@ private val DarkColorScheme = darkColorScheme(
     onBackground = TextWhite,
     surface = SurfaceDark,
     onSurface = TextWhite,
+    surfaceVariant = CardSurface,
+    onSurfaceVariant = TextGray,
     error = RedButton,
-    onError = TextWhite
+    onError = TextWhite,
+    outline = DotBorder
 )
 
 @Composable
