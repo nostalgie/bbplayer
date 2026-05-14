@@ -3,6 +3,9 @@ package com.dima.kidsvideoplayer.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +24,7 @@ import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.components.BounceButton
 import com.dima.kidsvideoplayer.ui.components.PinDialog
+import com.dima.kidsvideoplayer.ui.components.SeekButton
 import kotlinx.coroutines.delay
 
 /**
@@ -147,6 +151,13 @@ fun KidPlayerScreen(
                     )
                 }
 
+                // Seek backward button
+                SeekButton(
+                    icon = Icons.Default.FastRewind,
+                    contentDescription = "Seek backward",
+                    onSeek = { offsetMs -> videoPlayerManager.seekBackward(offsetMs) }
+                )
+
                 // Play/Pause button (always visible when videos exist)
                 BounceButton(
                     text = if (isPlaying) "⏸" else "▶",
@@ -161,6 +172,13 @@ fun KidPlayerScreen(
                     textColor = Color.White,
                     size = 90.dp,
                     fontSize = 36.sp
+                )
+
+                // Seek forward button
+                SeekButton(
+                    icon = Icons.Default.FastForward,
+                    contentDescription = "Seek forward",
+                    onSeek = { offsetMs -> videoPlayerManager.seekForward(offsetMs) }
                 )
 
                 // Next button (only when multiple videos)
