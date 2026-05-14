@@ -2,6 +2,7 @@ package com.dima.kidsvideoplayer.data
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.VisibleForTesting
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -34,6 +35,7 @@ class VideoRepository(private val context: Context) {
     /**
      * Serialize a list of URI strings into a JSON array string.
      */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun serialize(uris: List<String>): String {
         val array = JSONArray()
         uris.forEach { array.put(it) }
@@ -44,6 +46,7 @@ class VideoRepository(private val context: Context) {
      * Deserialize a raw stored string into a list of URI strings.
      * Supports both JSON array format and legacy pipe-delimited format.
      */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun deserialize(raw: String): List<String> {
         if (raw.isBlank()) return emptyList()
         if (raw.trimStart().startsWith("[")) {
@@ -69,7 +72,9 @@ class VideoRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             val current = prefs[VIDEO_URIS_KEY] ?: ""
             val existing = deserialize(current).toMutableList()
-            existing.add(uri)
+            if (uri !in existing) {
+                existing.add(uri)
+            }
             prefs[VIDEO_URIS_KEY] = serialize(existing)
         }
     }

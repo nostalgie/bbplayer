@@ -1,5 +1,6 @@
 package com.dima.kidsvideoplayer.ui.screens
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -8,11 +9,9 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,25 +20,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.dima.kidsvideoplayer.data.VideoRepository
+import com.dima.kidsvideoplayer.ui.screens.filepicker.*
+import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
+import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
+import com.dima.kidsvideoplayer.ui.theme.OrangeAccent
+import com.dima.kidsvideoplayer.ui.theme.RedButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.DecimalFormat
-
-// Supported video file extensions
-private val VIDEO_EXTENSIONS = setOf(
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "3gp",
-    "m4v", "ts", "mpg", "mpeg", "rmvb", "vob"
-)
-
-/** Root directory for the file browser */
-private const val ROOT_PATH = "/storage/emulated/0/"
 
 /**
  * Custom file browser screen for batch video selection.
@@ -47,6 +41,10 @@ private const val ROOT_PATH = "/storage/emulated/0/"
  * Allows selecting individual video files and entire folders (selects all videos
  * inside recursively). Uses java.io.File for filesystem browsing and converts
  * selected files to URI strings for storage via VideoRepository.
+ *
+ * URI scheme: stores `file://` URIs from File.toURI().toString().
+ * See also: ParentDashboardScreen stores `content://` URIs from SAF.
+ * Both schemes are handled by ExoPlayer and stored in the same DataStore list.
  *
  * @param videoRepository Repository for persisting video URIs
  * @param onBack Callback to navigate back to parent dashboard
@@ -61,7 +59,7 @@ fun FilePickerScreen(
 
     // Permission state
     val hasStoragePermission = remember {
-        mutableStateOf(checkStoragePermission())
+        mutableStateOf(checkStoragePermission(context))
     }
 
     // Launcher for MANAGE_EXTERNAL_STORAGE settings screen (API 30+)
@@ -69,7 +67,7 @@ fun FilePickerScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
         // Re-check permission when returning from settings
-        hasStoragePermission.value = checkStoragePermission()
+        hasStoragePermission.value = checkStoragePermission(context)
     }
 
     // Launcher for legacy runtime permissions (API < 30)
@@ -170,7 +168,7 @@ fun FilePickerScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A2E))
+            .background(DashboardBackground)
     ) {
         // Top bar with navigation
         FilePickerTopBar(
@@ -214,12 +212,12 @@ fun FilePickerScreen(
                     selectedFiles = allPaths.toSet()
                 }
             }) {
-                Text("Выбрать все", color = Color(0xFF4CAF50))
+                Text("Выбрать все", color = GreenPrimary)
             }
             TextButton(onClick = {
                 selectedFiles = emptySet()
             }) {
-                Text("Снять все", color = Color(0xFFEF5350))
+                Text("Снять все", color = RedButton)
             }
         }
 
@@ -375,434 +373,16 @@ fun FilePickerScreen(
 
 /**
  * Check if storage permission is granted.
+ * Properly checks READ_EXTERNAL_STORAGE for API < 30.
  */
-private fun checkStoragePermission(): Boolean {
+private fun checkStoragePermission(context: Context): Boolean {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         Environment.isExternalStorageManager()
     } else {
-        true // For older APIs, we'll request at runtime if needed
-    }
-}
-
-// ==============================
-// Data Models
-// ==============================
-
-/**
- * Represents a file system item (file or directory).
- */
-data class FileSystemItem(
-    val name: String,
-    val path: String,
-    val isDirectory: Boolean,
-    val isFile: Boolean = !isDirectory,
-    val size: Long = 0
-)
-
-// ==============================
-// File System Helper Functions
-// ==============================
-
-/**
- * List all folders and video files in the given directory.
- * Folders are listed first, then video files, both sorted alphabetically.
- */
-private fun listDirectoryItems(dirPath: String): List<FileSystemItem> {
-    val dir = File(dirPath)
-    if (!dir.exists() || !dir.isDirectory || !dir.canRead()) {
-        return emptyList()
-    }
-
-    val items = mutableListOf<FileSystemItem>()
-    val files = dir.listFiles() ?: return emptyList()
-
-    for (file in files) {
-        val name = file.name
-        // Skip hidden files/directories
-        if (name.startsWith(".")) continue
-
-        if (file.isDirectory) {
-            items.add(
-                FileSystemItem(
-                    name = name,
-                    path = file.absolutePath,
-                    isDirectory = true
-                )
-            )
-        } else if (isVideoFile(name)) {
-            items.add(
-                FileSystemItem(
-                    name = name,
-                    path = file.absolutePath,
-                    isDirectory = false,
-                    size = file.length()
-                )
-            )
-        }
-    }
-
-    // Sort: folders first (alphabetically), then files (alphabetically)
-    return items.sortedWith(
-        compareBy<FileSystemItem> { !it.isDirectory }
-            .thenBy { it.name.lowercase() }
-    )
-}
-
-/**
- * Check if a filename has a video extension.
- */
-private fun isVideoFile(name: String): Boolean {
-    val extension = name.substringAfterLast('.', "").lowercase()
-    return extension in VIDEO_EXTENSIONS
-}
-
-/**
- * Recursively count video files in a directory.
- */
-private fun countVideosRecursively(dir: File): Int {
-    if (!dir.exists() || !dir.isDirectory || !dir.canRead()) return 0
-    var count = 0
-    val files = dir.listFiles() ?: return 0
-    for (file in files) {
-        if (file.name.startsWith(".")) continue
-        if (file.isDirectory) {
-            count += countVideosRecursively(file)
-        } else if (isVideoFile(file.name)) {
-            count++
-        }
-    }
-    return count
-}
-
-/**
- * Recursively find all video files in a directory.
- */
-private fun findVideosRecursively(dir: File): List<File> {
-    if (!dir.exists() || !dir.isDirectory || !dir.canRead()) return emptyList()
-    val result = mutableListOf<File>()
-    val files = dir.listFiles() ?: return emptyList()
-    for (file in files) {
-        if (file.name.startsWith(".")) continue
-        if (file.isDirectory) {
-            result.addAll(findVideosRecursively(file))
-        } else if (isVideoFile(file.name)) {
-            result.add(file)
-        }
-    }
-    return result
-}
-
-/**
- * Format file size to human-readable string.
- */
-private fun formatFileSize(size: Long): String {
-    if (size <= 0) return "0 Б"
-    val units = arrayOf("Б", "КБ", "МБ", "ГБ", "ТБ")
-    val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-    val df = DecimalFormat("#,##0.#")
-    return df.format(size / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups.coerceAtMost(units.size - 1)]
-}
-
-// ==============================
-// UI Sub-Composables
-// ==============================
-
-/**
- * Permission request screen shown when storage access is not granted.
- */
-@Composable
-private fun PermissionRequestScreen(
-    onRequestPermission: () -> Unit,
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF1A1A2E))
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "🔒",
-            fontSize = 48.sp
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Требуется доступ к файлам",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = "Для просмотра и выбора видеофайлов приложению необходим доступ к хранилищу устройства.",
-            fontSize = 16.sp,
-            color = Color.White.copy(alpha = 0.7f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = onRequestPermission,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4CAF50)
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                text = "Предоставить доступ",
-                fontSize = 16.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        TextButton(onClick = onBack) {
-            Text("Назад", color = Color.White.copy(alpha = 0.5f))
-        }
-    }
-}
-
-/**
- * Top bar showing current path and navigation controls.
- */
-@Composable
-private fun FilePickerTopBar(
-    currentPath: String,
-    onNavigateUp: () -> Unit,
-    onBack: () -> Unit
-) {
-    Surface(
-        color = Color(0xFF2C2C3E),
-        tonalElevation = 4.dp
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Back button
-                TextButton(onClick = onBack) {
-                    Text("← Назад", color = Color.White, fontSize = 14.sp)
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Up button
-                IconButton(onClick = onNavigateUp, enabled = currentPath != ROOT_PATH) {
-                    Text("⬆", fontSize = 20.sp, color = if (currentPath != ROOT_PATH) Color.White else Color.Gray)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                // Path display
-                Text(
-                    text = currentPath.removePrefix("/storage/emulated/0").ifEmpty { "/" },
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Divider(color = Color.White.copy(alpha = 0.1f))
-        }
-    }
-}
-
-/**
- * Folder item in the file list.
- *
- * @param item The folder's file system info
- * @param videoCount Total number of videos in the folder (null if still counting)
- * @param selectedCount Number of videos currently selected in this folder
- * @param toggleableState The tri-state for the checkbox (Off / Indeterminate / On)
- * @param onSelect Called when the folder checkbox is toggled
- * @param onClick Called when the folder body is clicked (navigates into folder)
- */
-@Composable
-private fun FolderItem(
-    item: FileSystemItem,
-    videoCount: Int?,
-    selectedCount: Int,
-    toggleableState: ToggleableState,
-    onSelect: () -> Unit,
-    onClick: () -> Unit
-) {
-    val hasSelection = selectedCount > 0
-
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = if (hasSelection) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFF2C2C3E)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Tri-state checkbox for selection
-            TriStateCheckbox(
-                state = toggleableState,
-                onClick = onSelect,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = Color(0xFF4CAF50),
-                    uncheckedColor = Color.White.copy(alpha = 0.5f)
-                )
-            )
-
-            // Folder content (clickable to navigate)
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onClick)
-                    .padding(start = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "📁", fontSize = 24.sp)
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.name,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    // Secondary line: selection count or video count
-                    Text(
-                        text = when {
-                            videoCount == null -> "Подсчёт..."
-                            videoCount == 0 -> "Нет видео"
-                            selectedCount > 0 -> "Выбрано: $selectedCount из $videoCount"
-                            else -> "$videoCount видео"
-                        },
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.5f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Video file item in the file list.
- */
-@Composable
-private fun VideoFileItem(
-    item: FileSystemItem,
-    isSelected: Boolean,
-    onSelect: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = if (isSelected) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFF2C2C3E)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onSelect)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onSelect() },
-                colors = CheckboxDefaults.colors(
-                    checkedColor = Color(0xFF4CAF50),
-                    uncheckedColor = Color.White.copy(alpha = 0.5f)
-                )
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "🎬", fontSize = 22.sp)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.name,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = formatFileSize(item.size),
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
-            }
-        }
-    }
-}
-
-/**
- * Bottom bar with selection summary and action buttons.
- */
-@Composable
-private fun FilePickerBottomBar(
-    selectedFileCount: Int,
-    selectedFolderCount: Int,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit
-) {
-    Surface(
-        color = Color(0xFF2C2C3E),
-        tonalElevation = 8.dp
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Divider(color = Color.White.copy(alpha = 0.1f))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Selection count
-                Column {
-                    Text(
-                        text = "Выбрано: $selectedFileCount файлов",
-                        fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                    if (selectedFolderCount > 0) {
-                        Text(
-                            text = "из $selectedFolderCount папок",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-
-                // Action buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = onCancel,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White.copy(alpha = 0.7f)
-                        )
-                    ) {
-                        Text("Отмена")
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        enabled = selectedFileCount > 0,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50),
-                            disabledContainerColor = Color(0xFF4CAF50).copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Text("Добавить", color = Color.White)
-                    }
-                }
-            }
-        }
+        // API 26-29: check runtime permission
+        ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 }

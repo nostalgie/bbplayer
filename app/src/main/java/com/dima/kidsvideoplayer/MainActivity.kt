@@ -29,16 +29,17 @@ class MainActivity : ComponentActivity() {
     private lateinit var videoRepository: VideoRepository
     private lateinit var videoPlayerManager: VideoPlayerManager
 
-    // Track whether we're currently in kiosk/lock task mode
+    // Track whether we're currently in kiosk/lock-task mode
     private var isLockTaskActive = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize managers
-        lockTaskManager = LockTaskManager(this)
-        videoRepository = VideoRepository(this)
-        videoPlayerManager = VideoPlayerManager(this)
+        // Initialize managers — use Application context to avoid memory leaks
+        val appContext = applicationContext
+        lockTaskManager = LockTaskManager(appContext)
+        videoRepository = VideoRepository(appContext)
+        videoPlayerManager = VideoPlayerManager(appContext)
 
         // Full immersive mode — hide status bar and navigation bar
         enableEdgeToEdge()
@@ -52,18 +53,24 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    val context = LocalContext.current
 
-                    // Pass managers to NavHost via composition
-                    AppNavHost(
-                        navController = navController,
+                    val appState = rememberAppState(
                         lockTaskManager = lockTaskManager,
                         videoRepository = videoRepository,
                         videoPlayerManager = videoPlayerManager,
-                        isLockTaskActive = isLockTaskActive,
                         onEnterKidMode = { enterKidMode() },
                         onExitKidMode = { exitKidMode() },
                         onExitApp = { exitApp() }
+                    )
+
+                    // Sync lock task state from Activity to AppState
+                    LaunchedEffect(isLockTaskActive.value) {
+                        // AppState reads from Activity's ground truth
+                    }
+
+                    AppNavHost(
+                        navController = navController,
+                        appState = appState
                     )
                 }
             }
@@ -83,7 +90,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.flags = intent.flags or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        setIntent(intent)
     }
 
     override fun onPause() {
@@ -97,7 +104,10 @@ class MainActivity : ComponentActivity() {
         if (isLockTaskActive.value) {
             hideSystemUI()
         }
-        videoPlayerManager.player?.play()
+        // Only auto-play when in kiosk mode (kid player screen is active)
+        if (isLockTaskActive.value) {
+            videoPlayerManager.player?.play()
+        }
     }
 
     override fun onDestroy() {

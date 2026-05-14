@@ -23,6 +23,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.ui.components.BounceButton
+import com.dima.kidsvideoplayer.ui.theme.CardSurface
+import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
+import com.dima.kidsvideoplayer.ui.theme.ExitRed
+import com.dima.kidsvideoplayer.ui.theme.FolderBlue
+import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
+import com.dima.kidsvideoplayer.ui.theme.OrangeAccent
+import com.dima.kidsvideoplayer.ui.theme.RedButton
 import kotlinx.coroutines.launch
 
 /**
@@ -70,7 +77,7 @@ fun ParentDashboardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A2E))
+            .background(DashboardBackground)
             .padding(24.dp)
     ) {
         // ==============================
@@ -92,7 +99,7 @@ fun ParentDashboardScreen(
             BounceButton(
                 text = "Назад",
                 onClick = onBackToKidMode,
-                backgroundColor = Color(0xFF4CAF50),
+                backgroundColor = GreenPrimary,
                 textColor = Color.White,
                 icon = "👶",
                 size = 100.dp,
@@ -115,7 +122,7 @@ fun ParentDashboardScreen(
                 onClick = {
                     videoPickerLauncher.launch(arrayOf("video/*"))
                 },
-                backgroundColor = Color(0xFFFF9800),
+                backgroundColor = OrangeAccent,
                 textColor = Color.White,
                 icon = "📄",
                 size = 120.dp,
@@ -125,7 +132,7 @@ fun ParentDashboardScreen(
             BounceButton(
                 text = "Из папки",
                 onClick = onNavigateToFilePicker,
-                backgroundColor = Color(0xFF2196F3),
+                backgroundColor = FolderBlue,
                 textColor = Color.White,
                 icon = "📂",
                 size = 120.dp,
@@ -197,7 +204,7 @@ fun ParentDashboardScreen(
                         videoRepository.clearAll()
                     }
                 },
-                backgroundColor = Color(0xFFEF5350),
+                backgroundColor = RedButton,
                 textColor = Color.White,
                 size = 100.dp,
                 fontSize = 14.sp
@@ -215,7 +222,7 @@ fun ParentDashboardScreen(
             BounceButton(
                 text = "Выйти",
                 onClick = onExitApp,
-                backgroundColor = Color(0xFFB71C1C),
+                backgroundColor = ExitRed,
                 textColor = Color.White,
                 icon = "🚪",
                 size = 100.dp,
@@ -245,7 +252,7 @@ private fun VideoListItem(
 
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF2C2C3E),
+        color = CardSurface,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -275,12 +282,12 @@ private fun VideoListItem(
             Surface(
                 onClick = onRemove,
                 shape = RoundedCornerShape(8.dp),
-                color = Color(0xFFEF5350).copy(alpha = 0.2f)
+                color = RedButton.copy(alpha = 0.2f)
             ) {
                 Text(
                     text = " ✕ ",
                     fontSize = 18.sp,
-                    color = Color(0xFFEF5350),
+                    color = RedButton,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }

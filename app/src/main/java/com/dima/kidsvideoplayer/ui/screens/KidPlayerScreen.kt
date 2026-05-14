@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -25,6 +27,8 @@ import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.components.BounceButton
 import com.dima.kidsvideoplayer.ui.components.PinDialog
 import com.dima.kidsvideoplayer.ui.components.SeekButton
+import com.dima.kidsvideoplayer.ui.theme.BlueButton
+import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
 import kotlinx.coroutines.delay
 
 /**
@@ -57,15 +61,9 @@ fun KidPlayerScreen(
         }
     }
 
-    // Create PlayerView once
+    // Create PlayerView once — lifecycle is owned by MainActivity
     val exoPlayer = remember {
         videoPlayerManager.initialize()
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            videoPlayerManager.release()
-        }
     }
 
     Box(
@@ -101,7 +99,7 @@ fun KidPlayerScreen(
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Medium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -144,7 +142,7 @@ fun KidPlayerScreen(
                     BounceButton(
                         text = "⏮",
                         onClick = { videoPlayerManager.previous() },
-                        backgroundColor = Color(0xFF42A5F5),
+                        backgroundColor = BlueButton,
                         textColor = Color.White,
                         size = 80.dp,
                         fontSize = 36.sp
@@ -168,7 +166,7 @@ fun KidPlayerScreen(
                             exoPlayer.play()
                         }
                     },
-                    backgroundColor = Color(0xFF4CAF50),
+                    backgroundColor = GreenPrimary,
                     textColor = Color.White,
                     size = 90.dp,
                     fontSize = 36.sp
@@ -186,7 +184,7 @@ fun KidPlayerScreen(
                     BounceButton(
                         text = "⏭",
                         onClick = { videoPlayerManager.next() },
-                        backgroundColor = Color(0xFF42A5F5),
+                        backgroundColor = BlueButton,
                         textColor = Color.White,
                         size = 80.dp,
                         fontSize = 36.sp
