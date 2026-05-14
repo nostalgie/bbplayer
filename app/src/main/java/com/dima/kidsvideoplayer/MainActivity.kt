@@ -86,12 +86,18 @@ class MainActivity : ComponentActivity() {
         intent.flags = intent.flags or Intent.FLAG_ACTIVITY_SINGLE_TOP
     }
 
+    override fun onPause() {
+        super.onPause()
+        videoPlayerManager.player?.pause()
+    }
+
     override fun onResume() {
         super.onResume()
         // Only hide system UI when in kiosk/lock-task mode
         if (isLockTaskActive.value) {
             hideSystemUI()
         }
+        videoPlayerManager.player?.play()
     }
 
     override fun onDestroy() {

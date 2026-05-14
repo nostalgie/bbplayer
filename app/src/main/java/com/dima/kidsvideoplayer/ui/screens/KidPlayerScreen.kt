@@ -58,6 +58,12 @@ fun KidPlayerScreen(
         videoPlayerManager.initialize()
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            videoPlayerManager.release()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
