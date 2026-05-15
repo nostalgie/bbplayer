@@ -30,6 +30,237 @@ import com.dima.kidsvideoplayer.ui.theme.FolderBlue
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
 import com.dima.kidsvideoplayer.ui.theme.RedButton
 import kotlinx.coroutines.launch
+import java.net.URLDecoder
+
+/**
+ * Represents an entry in the grouped video list.
+ */
+sealed interface VideoListEntry {
+    data class FolderHeader(
+        val folderName: String,   // e.g. "Movies" or "Anime"
+        val folderPath: String,   // full path for identification
+        val depth: Int            // 0 = top-level, 1 = subfolder, etc.
+    ) : VideoListEntry
+
+    data class VideoEntry(
+        val uriString: String,    // original URI string
+        val fileName: String,     // display name
+        val originalIndex: Int    // index in flat list for onPlayVideo callback
+    ) : VideoListEntry
+}
+
+/**
+ * Extract folder information from a URI string.
+ * Returns Pair<displayPath, fileName> or null if parsing fails.
+ * displayPath uses abbreviated storage names (SD1, SD2, VOL1, etc.)
+ */
+private fun extractFolderInfo(uriString: String): Pair<String, String>? {
+    val uri = Uri.parse(uriString)
+    return when (uri.scheme) {
+        "file" -> {
+            // file:///storage/emulated/0/Movies/video.mp4
+            // → displayPath: SD1/Мультики
+            val path = uri.path ?: return null
+            val lastSlash = path.lastIndexOf('/')
+            if (lastSlash > 0) {
+                val folderPath = path.substring(0, lastSlash)
+                val fileName = uri.lastPathSegment.orEmpty()
+                val displayPath = abbreviateFolderPath(folderPath)
+                displayPath to fileName
+            } else null
+        }
+        "content" -> {
+            // content://.../document/primary%3AMovies%2Fvideo.mp4
+            // lastPathSegment = "primary:Movies/video.mp4"
+            val segment = uri.lastPathSegment ?: return null
+            val colonIdx = segment.indexOf(':')
+            val relative = if (colonIdx >= 0) segment.substring(colonIdx + 1) else segment
+            val lastSlash = relative.lastIndexOf('/')
+            if (lastSlash > 0) {
+                val folder = relative.substring(0, lastSlash)
+                val fileName = URLDecoder.decode(relative.substring(lastSlash + 1), "UTF-8")
+                val displayPath = abbreviateFolderPath(folder)
+                displayPath to fileName
+            } else null
+        }
+        else -> null
+    }
+}
+
+/**
+ * Convert full folder path to abbreviated format with storage volume names.
+ * Examples:
+ * /storage/emulated/0/Movies/Animation → SD1/Мультики
+ * /storage/XXXX-XXXX/Video → SD2/Видео
+ * /mnt/media/0/Films → VOL1/Фильмы
+ */
+private fun abbreviateFolderPath(fullPath: String): String {
+    println("abbreviateFolderPath called with: '$fullPath'")
+    
+    // Extract storage volume name and path
+    val storagePattern = Regex("""^/storage/([^/]+)(?:/(.+))?$""")
+    val matchResult = storagePattern.find(fullPath)
+    
+    val result = if (matchResult != null) {
+        val volumeName = matchResult.groupValues[1]
+        val relativePath = matchResult.groupValues[2].takeIf { it.isNotEmpty() }
+        
+        val abbreviatedVolume = when (volumeName) {
+            "emulated" -> "SD1"  // Internal storage
+            else -> {
+                // Check if it's a removable SD card (format like XXXX-XXXX)
+                if (volumeName.matches(Regex("""^[A-F0-9]{4}-[A-F0-9]{4}$"""))) {
+                    "SD${volumeName.take(2)}"  // SD2, SD3, etc.
+                } else {
+                    "VOL${volumeName.take(2)}"  // VOL1, VOL2, etc.
+                }
+            }
+        }
+        
+        if (relativePath != null) {
+            "$abbreviatedVolume/$relativePath"
+        } else {
+            abbreviatedVolume
+        }
+    } else {
+        // For non-standard paths, try to extract meaningful parts
+        val parts = fullPath.split("/").filter { it.isNotEmpty() }
+        when (parts.size) {
+            0 -> ""
+            1 -> parts[0]
+            else -> {
+                val volume = parts[0].take(4)
+                val pathParts = parts.subList(1, parts.size)
+                "$volume/${pathParts.joinToString("/")}"
+            }
+        }
+    }
+    
+    println("abbreviateFolderPath result: '$result'")
+    return result
+}
+
+/**
+ * Group video URIs by their folders and create VideoListEntry items.
+ */
+private fun groupVideosByFolder(uris: List<String>): List<VideoListEntry> {
+    if (uris.isEmpty()) return emptyList()
+
+    // 1. Extract folder info for each URI
+    val folderMap = mutableMapOf<String, MutableList<Pair<String, String>>>()
+    val ungroupedFiles = mutableListOf<Pair<String, String>>()
+
+    uris.forEachIndexed { index, uriString ->
+        extractFolderInfo(uriString)?.let { (folderPath, fileName) ->
+            folderMap.getOrPut(folderPath) { mutableListOf() }.add(folderPath to fileName)
+        } ?: run {
+            // Failed to parse, put in ungrouped
+            ungroupedFiles.add(uriString to "Видео ${index + 1}")
+        }
+    }
+    
+    // Debug output
+    println("=== Debug: groupVideosByFolder ===")
+    println("URIs: ${uris.size}")
+    println("Folder map keys: ${folderMap.keys}")
+    folderMap.forEach { (path, files) ->
+        println("  '$path': ${files.size} files")
+    }
+    println("Ungrouped files: ${ungroupedFiles.size}")
+    println("================================")
+
+    // 2. Sort folder paths alphabetically
+    val sortedFolderPaths = folderMap.keys.sorted()
+    
+    // 3. Calculate depths based on relative nesting
+    val folderDepths = calculateFolderDepths(sortedFolderPaths)
+    
+    // 4. Build the result list
+        val result = mutableListOf<VideoListEntry>()
+        
+        // Add grouped folders first
+        sortedFolderPaths.forEach { folderPath ->
+            val depth = folderDepths[folderPath] ?: 0
+            val folderName = extractFolderName(folderPath)
+            result.add(VideoListEntry.FolderHeader(
+                folderName = folderName,
+                folderPath = folderPath,
+                depth = depth
+            ))
+            
+            // Add videos in this folder
+            folderMap[folderPath]?.forEach { (_, fileName) ->
+                // Find the original URI that matches this folder and filename
+                val matchingUri = uris.find { uri ->
+                    val (extractedFolder, extractedFileName) = extractFolderInfo(uri) ?: Pair("", "")
+                    extractedFolder == folderPath && extractedFileName == fileName
+                }
+                if (matchingUri != null) {
+                    val originalIndex = uris.indexOf(matchingUri)
+                    result.add(VideoListEntry.VideoEntry(
+                        uriString = matchingUri,
+                        fileName = fileName,
+                        originalIndex = originalIndex
+                    ))
+                }
+            }
+        }
+    
+    // Add ungrouped files at the end with depth 0
+    if (ungroupedFiles.isNotEmpty()) {
+        result.add(VideoListEntry.FolderHeader(
+            folderName = "Другие",
+            folderPath = "other",
+            depth = 0
+        ))
+        ungroupedFiles.forEachIndexed { _, (uriString, fileName) ->
+            val originalIndex = uris.indexOf(uriString)
+            result.add(VideoListEntry.VideoEntry(
+                uriString = uriString,
+                fileName = fileName,
+                originalIndex = originalIndex
+            ))
+        }
+    }
+    
+    return result
+}
+
+/**
+ * Calculate folder depths based on relative nesting.
+ * Returns Map<folderPath, depth>
+ */
+private fun calculateFolderDepths(folderPaths: List<String>): Map<String, Int> {
+    val depths = mutableMapOf<String, Int>()
+    
+    if (folderPaths.isEmpty()) return depths
+    
+    // Find the shallowest depth (minimum number of path segments)
+    val minSegments = folderPaths.minOf { path ->
+        path.count { it == '/' }
+    }
+    
+    // Calculate relative depth from shallowest
+    folderPaths.forEach { path ->
+        val segments = path.count { it == '/' }
+        depths[path] = segments - minSegments
+    }
+    
+    return depths
+}
+
+/**
+ * Extract folder name from full path (using abbreviated format).
+ */
+private fun extractFolderName(folderPath: String): String {
+    println("extractFolderName called with: '$folderPath'")
+    
+    // Return the full path instead of just the last part
+    val result = folderPath
+    
+    println("extractFolderName result: '$result'")
+    return result
+}
 
 private val BUTTON_SIZE = 120.dp
 private val BUTTON_HEIGHT = 60.dp
@@ -203,25 +434,31 @@ fun ParentDashboardScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
+                        // Transform flat URI list into grouped entries
+                        val groupedEntries = remember { groupVideosByFolder(videoUris) }
+
                         LazyColumn(
                             state = videoListState,
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            itemsIndexed(
-                                items = videoUris,
-                                key = { _, uri -> uri }
-                            ) { index, uriString ->
-                                VideoListItem(
-                                    index = index,
-                                    uriString = uriString,
-                                    onClick = { pendingPlayIndex = index },
-                                    onRemove = {
-                                        coroutineScope.launch {
-                                            videoRepository.removeVideoUri(uriString)
+                            itemsIndexed(groupedEntries) { _, entry ->
+                                when (entry) {
+                                    is VideoListEntry.FolderHeader -> FolderHeaderItem(
+                                        folderName = entry.folderName,
+                                        depth = entry.depth
+                                    )
+                                    is VideoListEntry.VideoEntry -> VideoListItem(
+                                        index = entry.originalIndex,
+                                        uriString = entry.uriString,
+                                        onClick = { pendingPlayIndex = entry.originalIndex },
+                                        onRemove = {
+                                            coroutineScope.launch {
+                                                videoRepository.removeVideoUri(entry.uriString)
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                         VerticalScrollbar(state = videoListState)
@@ -276,6 +513,30 @@ fun ParentDashboardScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Folder header item in the grouped list.
+ */
+@Composable
+private fun FolderHeaderItem(
+    folderName: String,
+    depth: Int
+) {
+    val indent = (depth * 16).dp  // 16dp per nesting level
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = indent + 12.dp, top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "📁 $folderName",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = FolderBlue
+        )
     }
 }
 
