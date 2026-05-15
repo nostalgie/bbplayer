@@ -29,11 +29,14 @@ import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.CompatibilityResult
 import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.ui.screens.filepicker.*
+import com.dima.kidsvideoplayer.utils.HuaweiStorageHelper
+import com.dima.kidsvideoplayer.utils.PerformanceMonitor
 import com.dima.kidsvideoplayer.ui.components.VerticalScrollbar
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
 import com.dima.kidsvideoplayer.ui.theme.RedButton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -90,7 +93,7 @@ fun FilePickerScreen(
 
     // Load storage volumes once
     LaunchedEffect(Unit) {
-        storageVolumes = withContext(Dispatchers.IO) { listStorageVolumes() }
+        storageVolumes = withContext(Dispatchers.IO) { listStorageVolumes(context) }
     }
 
     // Set of storage root paths (for navigation logic)
@@ -101,6 +104,12 @@ fun FilePickerScreen(
 
     // Loading state
     var isLoading by remember { mutableStateOf(false) }
+    
+    // Loading progress state for large folders
+    var loadingProgress by remember { mutableStateOf(0f) }
+    var loadingTotal by remember { mutableStateOf(0) }
+    var isScanningLargeFolder by remember { mutableStateOf(false) }
+    var scanCancellationRequested by remember { mutableStateOf(false) }
 
     // Error message
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -124,59 +133,181 @@ fun FilePickerScreen(
             return@LaunchedEffect
         }
 
+        PerformanceMonitor.startTimer("directoryLoad")
+        PerformanceMonitor.incrementCounter("directoryLoadOperations")
         isLoading = true
+        isScanningLargeFolder = false
+        scanCancellationRequested = false
+        loadingProgress = 0f
         errorMessage = null
+        
         try {
-            val items = withContext(Dispatchers.IO) {
+            // Check if directory is large (more than 50 items)
+            val initialItems = withContext(Dispatchers.IO) {
                 listDirectoryItems(currentPath)
             }
-            directoryItems = items
-            // Initialize folder video paths as null (loading)
-            folderVideoPaths.value = items
-                .filter { it.isDirectory }
-                .associate { it.path to null }
+            
+            val isLargeDirectory = initialItems.size > 50
+            if (isLargeDirectory) {
+                isScanningLargeFolder = true
+                loadingTotal = initialItems.size
+                
+                // Update progress as we process items
+                var processedCount = 0
+                
+                // Process items with progress tracking
+                directoryItems = initialItems
+                processedCount++
+                loadingProgress = processedCount.toFloat() / loadingTotal
+                
+                // Initialize folder video paths as null (loading)
+                folderVideoPaths.value = initialItems
+                    .filter { it.isDirectory }
+                    .associate { it.path to null }
 
-            // Launch async loading of video paths for each folder
-            for (item in items.filter { it.isDirectory }) {
-                launch {
-                    val videos = withContext(Dispatchers.IO) {
-                        findVideosRecursively(File(item.path))
-                    }
-                    val paths = videos.map { it.absolutePath }
-                    val current = folderVideoPaths.value.toMutableMap()
-                    current[item.path] = paths
-                    folderVideoPaths.value = current
+                // Launch async loading of video paths for each folder with parallel processing
+                initialItems.filter { it.isDirectory }.chunked(4).forEach { chunk ->
+                    if (scanCancellationRequested) return@forEach
+                    
+                    launch {
+                        // Process folders in parallel within chunks
+                        val folderResults = chunk.map { item ->
+                            if (scanCancellationRequested) return@map null
+                            async {
+                                val videos = withContext(Dispatchers.IO) {
+                                    findVideosRecursively(File(item.path))
+                                }
+                                item.path to videos.map { it.absolutePath }
+                            }
+                        }
+                        
+                        // Wait for all folders in this chunk to complete
+                        folderResults.filterNotNull().map { it.await() }.forEach { (folderPath, paths) ->
+                            if (scanCancellationRequested) return@forEach
+                            
+                            val current = folderVideoPaths.value.toMutableMap()
+                            current[folderPath] = paths
+                            folderVideoPaths.value = current
+                            processedCount++
+                            loadingProgress = processedCount.toFloat() / loadingTotal
 
-                    // Launch compatibility checks for videos in this folder
-                    for (videoPath in paths) {
-                        launch {
-                            if (videoPath in compatibilityCache.value) return@launch
-                            val uri = Uri.fromFile(File(videoPath))
-                            val result = videoCompatibilityChecker.checkCompatibility(uri)
-                            val updated = compatibilityCache.value.toMutableMap()
-                            updated[videoPath] = result
-                            compatibilityCache.value = updated
-                            // Auto-deselect unsupported files
-                            if (!result.isFullySupported) {
-                                selectedFiles = selectedFiles - videoPath
+                            // Launch compatibility checks for videos in this folder
+                            paths.forEach { videoPath ->
+                                if (scanCancellationRequested) return@forEach
+                                launch {
+                                    if (videoPath in compatibilityCache.value) return@launch
+                                    val uri = Uri.fromFile(File(videoPath))
+                                    val result = videoCompatibilityChecker.checkCompatibility(uri)
+                                    val updated = compatibilityCache.value.toMutableMap()
+                                    updated[videoPath] = result
+                                    compatibilityCache.value = updated
+                                    // Auto-deselect unsupported files
+                                    if (!result.isFullySupported) {
+                                        selectedFiles = selectedFiles - videoPath
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // Launch compatibility checks for video files in current directory
-            for (fileItem in items.filter { it.isFile }) {
-                launch {
-                    if (fileItem.path in compatibilityCache.value) return@launch
-                    val uri = Uri.fromFile(File(fileItem.path))
-                    val result = videoCompatibilityChecker.checkCompatibility(uri)
-                    val updated = compatibilityCache.value.toMutableMap()
-                    updated[fileItem.path] = result
-                    compatibilityCache.value = updated
-                    // Auto-deselect unsupported files
-                    if (!result.isFullySupported) {
-                        selectedFiles = selectedFiles - fileItem.path
+                // Launch compatibility checks for video files in current directory
+                initialItems.filter { it.isFile }.chunked(10).forEach { chunk ->
+                    if (scanCancellationRequested) return@forEach
+                    
+                    launch {
+                        // Process files in parallel within chunks
+                        val fileResults = chunk.map { fileItem ->
+                            if (scanCancellationRequested) return@map null
+                            async {
+                                if (fileItem.path in compatibilityCache.value) return@async fileItem.path to null
+                                val uri = Uri.fromFile(File(fileItem.path))
+                                val result = videoCompatibilityChecker.checkCompatibility(uri)
+                                val updated = compatibilityCache.value.toMutableMap()
+                                updated[fileItem.path] = result
+                                compatibilityCache.value = updated
+                                // Auto-deselect unsupported files
+                                if (!result.isFullySupported) {
+                                    selectedFiles = selectedFiles - fileItem.path
+                                }
+                                fileItem.path to result
+                            }
+                        }
+                        
+                        // Wait for all files in this chunk to complete
+                        fileResults.filterNotNull().map { it.await() }
+                        processedCount += chunk.size
+                        loadingProgress = processedCount.toFloat() / loadingTotal
+                    }
+                }
+            } else {
+                // Normal directory loading
+                directoryItems = initialItems
+                // Initialize folder video paths as null (loading)
+                folderVideoPaths.value = initialItems
+                    .filter { it.isDirectory }
+                    .associate { it.path to null }
+
+                // Launch async loading of video paths for each folder with parallel processing
+                initialItems.filter { it.isDirectory }.chunked(4).forEach { chunk ->
+                    launch {
+                        // Process folders in parallel within chunks
+                        val folderResults = chunk.map { item ->
+                            async {
+                                val videos = withContext(Dispatchers.IO) {
+                                    findVideosRecursively(File(item.path))
+                                }
+                                item.path to videos.map { it.absolutePath }
+                            }
+                        }
+                        
+                        // Wait for all folders in this chunk to complete
+                        folderResults.map { it.await() }.forEach { (folderPath, paths) ->
+                            val current = folderVideoPaths.value.toMutableMap()
+                            current[folderPath] = paths
+                            folderVideoPaths.value = current
+
+                            // Launch compatibility checks for videos in this folder
+                            paths.forEach { videoPath ->
+                                launch {
+                                    if (videoPath in compatibilityCache.value) return@launch
+                                    val uri = Uri.fromFile(File(videoPath))
+                                    val result = videoCompatibilityChecker.checkCompatibility(uri)
+                                    val updated = compatibilityCache.value.toMutableMap()
+                                    updated[videoPath] = result
+                                    compatibilityCache.value = updated
+                                    // Auto-deselect unsupported files
+                                    if (!result.isFullySupported) {
+                                        selectedFiles = selectedFiles - videoPath
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Launch compatibility checks for video files in current directory
+                initialItems.filter { it.isFile }.chunked(10).forEach { chunk ->
+                    launch {
+                        // Process files in parallel within chunks
+                        val fileResults = chunk.map { fileItem ->
+                            async {
+                                if (fileItem.path in compatibilityCache.value) return@async fileItem.path to null
+                                val uri = Uri.fromFile(File(fileItem.path))
+                                val result = videoCompatibilityChecker.checkCompatibility(uri)
+                                val updated = compatibilityCache.value.toMutableMap()
+                                updated[fileItem.path] = result
+                                compatibilityCache.value = updated
+                                // Auto-deselect unsupported files
+                                if (!result.isFullySupported) {
+                                    selectedFiles = selectedFiles - fileItem.path
+                                }
+                                fileItem.path to result
+                            }
+                        }
+                        
+                        // Wait for all files in this chunk to complete
+                        fileResults.map { it.await() }
                     }
                 }
             }
@@ -187,7 +318,11 @@ fun FilePickerScreen(
             errorMessage = "Ошибка: ${e.message}"
             directoryItems = emptyList()
         }
+        
+        PerformanceMonitor.stopTimer("directoryLoad")
+        PerformanceMonitor.incrementCounter("completedDirectoryLoads")
         isLoading = false
+        isScanningLargeFolder = false
     }
 
     // Permission request screen or file browser
@@ -324,7 +459,7 @@ fun FilePickerScreen(
             }
         }
 
-        // Loading indicator
+        // Loading indicator with progress for large folders
         if (isLoading) {
             Box(
                 modifier = Modifier
@@ -332,18 +467,54 @@ fun FilePickerScreen(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                AndroidView(
-                    factory = { ctx ->
-                        android.widget.ProgressBar(ctx).apply {
-                            layoutParams = android.widget.LinearLayout.LayoutParams(
-                                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                if (isScanningLargeFolder) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Сканирование папки...",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        LinearProgressIndicator(
+                            progress = loadingProgress,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp)
+                                .height(8.dp),
+                            color = GreenPrimary
+                        )
+                        Text(
+                            text = "${(loadingProgress * 100).toInt()}%",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        if (scanCancellationRequested) {
+                            Text(
+                                text = "Отмена...",
+                                color = Color.Red,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(top = 8.dp)
                             )
-                            indeterminateTintList = android.content.res.ColorStateList.valueOf(0xFFFF9800.toInt())
                         }
-                    },
-                    modifier = Modifier.size(48.dp)
-                )
+                    }
+                } else {
+                    AndroidView(
+                        factory = { ctx ->
+                            android.widget.ProgressBar(ctx).apply {
+                                layoutParams = android.widget.LinearLayout.LayoutParams(
+                                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                                )
+                                indeterminateTintList = android.content.res.ColorStateList.valueOf(0xFFFF9800.toInt())
+                            }
+                        },
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
             }
         } else if (errorMessage != null) {
             Box(
