@@ -63,6 +63,16 @@ fun KidPlayerScreen(
 ) {
     val context = LocalContext.current
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
+    val selectedVideos by videoRepository.selectedVideos.collectAsStateWithLifecycle(initialValue = emptySet())
+    
+    // Filter to only show selected videos
+    val filteredVideoUris = remember(videoUris, selectedVideos) {
+        if (selectedVideos.isEmpty()) {
+            emptyList()
+        } else {
+            videoUris.filter { selectedVideos.contains(it) }
+        }
+    }
 
     // PIN dialog state
     var showPinDialog by remember { mutableStateOf(false) }
@@ -71,8 +81,8 @@ fun KidPlayerScreen(
     var hasRestoredState by remember { mutableStateOf(false) }
 
     // Initialize player when URIs change or when a specific video is requested
-    LaunchedEffect(videoUris, pendingStartVideoIndex) {
-        if (videoUris.isNotEmpty()) {
+    LaunchedEffect(filteredVideoUris, pendingStartVideoIndex) {
+        if (filteredVideoUris.isNotEmpty()) {
             val startIndex: Int
             val startPositionMs: Long
 
@@ -109,7 +119,7 @@ fun KidPlayerScreen(
                 startPositionMs = 0L
             }
 
-            videoPlayerManager.setVideoList(videoUris, startIndex, startPositionMs)
+            videoPlayerManager.setVideoList(filteredVideoUris, startIndex, startPositionMs)
         }
     }
 
@@ -154,11 +164,11 @@ fun KidPlayerScreen(
         while (true) {
             delay(5_000L)
             val currentIndex = exoPlayer.currentMediaItemIndex
-            if (currentIndex >= 0 && currentIndex < videoUris.size) {
+            if (currentIndex >= 0 && currentIndex < filteredVideoUris.size) {
                 val positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
                 playbackStateRepository.save(
                     PlaybackStateRepository.PlaybackState(
-                        videoUri = videoUris[currentIndex],
+                        videoUri = filteredVideoUris[currentIndex],
                         positionMs = positionMs
                     )
                 )
@@ -174,7 +184,7 @@ fun KidPlayerScreen(
         // ==============================
         // Video Player (full screen)
         // ==============================
-        if (videoUris.isNotEmpty()) {
+        if (filteredVideoUris.isNotEmpty()) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -194,13 +204,23 @@ fun KidPlayerScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "🎬 Нет видео\n\nРодитель может добавить видео\nчерез настройки",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center
-                )
+                if (videoUris.isEmpty()) {
+                    Text(
+                        text = "🎬 Нет видео\n\nРодитель может добавить видео\nчерез настройки",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Text(
+                        text = "🎬 Нет выбранных видео\n\nПожалуйста, выберите видео\nв настройках родителя",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
 
@@ -288,7 +308,7 @@ fun KidPlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Previous button — always visible, disabled (grayed out) when single video
-                        val hasMultipleVideos = videoUris.size > 1
+                        val hasMultipleVideos = filteredVideoUris.size > 1
                         BounceButton(
                             text = "⏮",
                             onClick = {
@@ -350,7 +370,7 @@ fun KidPlayerScreen(
                                 controlsInteraction++
                                 if (hasMultipleVideos) {
                                     val currentIndex = exoPlayer.currentMediaItemIndex
-                                    val newIndex = if (currentIndex == videoUris.lastIndex) 0 else currentIndex + 1
+                                    val newIndex = if (currentIndex == filteredVideoUris.lastIndex) 0 else currentIndex + 1
                                     exoPlayer.seekToDefaultPosition(newIndex)
                                 }
                             },

@@ -294,6 +294,7 @@ fun ParentDashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
     val expandedFolders by videoRepository.expandedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
+    val selectedVideos by videoRepository.selectedVideos.collectAsStateWithLifecycle(initialValue = emptySet())
 
     // Exit confirmation dialog state
     var showExitDialog by remember { mutableStateOf(false) }
@@ -417,6 +418,16 @@ fun ParentDashboardScreen(
                         color = Color.White.copy(alpha = 0.7f)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    
+                    // Selection status
+                    val selectedCount = selectedVideos.size
+                    Text(
+                        text = "Выбрано: $selectedCount",
+                        fontSize = 14.sp,
+                        color = if (selectedCount > 0) GreenPrimary else Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
 
                 if (videoUris.isEmpty()) {
@@ -455,24 +466,41 @@ fun ParentDashboardScreen(
                         ) {
                             itemsIndexed(groupedEntries) { _, entry ->
                                 when (entry) {
-                                    is VideoListEntry.FolderHeader -> FolderHeaderItem(
-                                        folderName = entry.folderName,
-                                        isExpanded = entry.isExpanded,
-                                        onToggle = {
-                                            val updatedFolders = if (entry.isExpanded) {
-                                                expandedFolders - entry.folderPath
-                                            } else {
-                                                expandedFolders + entry.folderPath
+                                    is VideoListEntry.FolderHeader -> {
+                                        val (selectedCount, totalCount) = getSelectedCountInFolder(entry.folderPath, videoUris, selectedVideos)
+                                        FolderHeaderItem(
+                                            folderName = entry.folderName,
+                                            isExpanded = entry.isExpanded,
+                                            isSelected = areAllVideosInFolderSelected(entry.folderPath, videoUris, selectedVideos),
+                                            selectedCount = selectedCount,
+                                            totalCount = totalCount,
+                                            onToggle = {
+                                                val updatedFolders = if (entry.isExpanded) {
+                                                    expandedFolders - entry.folderPath
+                                                } else {
+                                                    expandedFolders + entry.folderPath
+                                                }
+                                                coroutineScope.launch {
+                                                    videoRepository.saveExpandedFolders(updatedFolders)
+                                                }
+                                            },
+                                            onToggleSelection = {
+                                                coroutineScope.launch {
+                                                    toggleAllVideosInFolder(entry.folderPath, videoRepository, videoUris, selectedVideos)
+                                                }
                                             }
-                                            coroutineScope.launch {
-                                                videoRepository.saveExpandedFolders(updatedFolders)
-                                            }
-                                        }
-                                    )
+                                        )
+                                    }
                                     is VideoListEntry.VideoEntry -> VideoListItem(
                                         index = entry.originalIndex,
                                         uriString = entry.uriString,
+                                        isSelected = selectedVideos.contains(entry.uriString),
                                         onClick = { pendingPlayIndex = entry.originalIndex },
+                                        onToggleSelection = {
+                                            coroutineScope.launch {
+                                                videoRepository.toggleVideoSelection(entry.uriString)
+                                            }
+                                        },
                                         onRemove = {
                                             coroutineScope.launch {
                                                 videoRepository.removeVideoUri(entry.uriString)
@@ -544,7 +572,11 @@ fun ParentDashboardScreen(
 private fun FolderHeaderItem(
     folderName: String,
     isExpanded: Boolean,
-    onToggle: () -> Unit
+    isSelected: Boolean,
+    selectedCount: Int,
+    totalCount: Int,
+    onToggle: () -> Unit,
+    onToggleSelection: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -553,6 +585,22 @@ private fun FolderHeaderItem(
             .padding(start = 12.dp, top = 4.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Checkbox
+        Surface(
+            onClick = onToggleSelection,
+            shape = RoundedCornerShape(4.dp),
+            color = if (isSelected) GreenPrimary else Color.Gray.copy(alpha = 0.3f)
+        ) {
+            Text(
+                text = if (isSelected) "✓" else "○",
+                fontSize = 16.sp,
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        
+        Spacer(modifier = Modifier.width(4.dp))
+        
         // Toggle icon
         Text(
             text = if (isExpanded) "▼" else "▶",
@@ -566,8 +614,21 @@ private fun FolderHeaderItem(
             text = "📁 $folderName",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = FolderBlue
+            color = FolderBlue,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 60.dp) // Reserve space for the counter
         )
+        
+        // Selection count
+        if (totalCount > 0) {
+            Text(
+                text = "$selectedCount/$totalCount",
+                fontSize = 11.sp,
+                color = if (selectedCount > 0) GreenPrimary else Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.padding(end = 12.dp) // Keep some margin from the right edge
+            )
+        }
     }
 }
 
@@ -578,7 +639,9 @@ private fun FolderHeaderItem(
 private fun VideoListItem(
     index: Int,
     uriString: String,
+    isSelected: Boolean,
     onClick: () -> Unit,
+    onToggleSelection: () -> Unit,
     onRemove: () -> Unit
 ) {
     val fileName = remember(uriString) {
@@ -592,7 +655,7 @@ private fun VideoListItem(
 
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = CardSurface,
+        color = if (isSelected) CardSurface.copy(alpha = 0.8f) else CardSurface,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -604,6 +667,20 @@ private fun VideoListItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Checkbox
+            Surface(
+                onClick = onToggleSelection,
+                shape = RoundedCornerShape(4.dp),
+                color = if (isSelected) GreenPrimary else Color.Gray.copy(alpha = 0.3f)
+            ) {
+                Text(
+                    text = if (isSelected) "✓" else "○",
+                    fontSize = 16.sp,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+            
             Text(
                 text = fileName,
                 fontSize = 14.sp,
@@ -611,7 +688,9 @@ private fun VideoListItem(
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp)
             )
 
             // Remove button
@@ -627,6 +706,48 @@ private fun VideoListItem(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
+        }
+    }
+}
+
+/**
+ * Helper function to check if all videos in a folder are selected.
+ */
+private fun areAllVideosInFolderSelected(folderPath: String, videoUris: List<String>, selectedVideos: Set<String>): Boolean {
+    val videosInFolder = videoUris.filter { uri ->
+        extractFolderInfo(uri)?.first == folderPath
+    }
+    return videosInFolder.isNotEmpty() && videosInFolder.all { selectedVideos.contains(it) }
+}
+
+/**
+ * Helper function to count selected videos in a folder.
+ */
+private fun getSelectedCountInFolder(folderPath: String, videoUris: List<String>, selectedVideos: Set<String>): Pair<Int, Int> {
+    val videosInFolder = videoUris.filter { uri ->
+        extractFolderInfo(uri)?.first == folderPath
+    }
+    val selectedCount = videosInFolder.count { selectedVideos.contains(it) }
+    return selectedCount to videosInFolder.size
+}
+
+/**
+ * Helper function to toggle selection of all videos in a folder.
+ */
+private suspend fun toggleAllVideosInFolder(folderPath: String, videoRepository: VideoRepository, videoUris: List<String>, selectedVideos: Set<String>) {
+    val videosInFolder = videoUris.filter { uri ->
+        extractFolderInfo(uri)?.first == folderPath
+    }
+    
+    if (videosInFolder.isNotEmpty()) {
+        val allSelected = videosInFolder.all { selectedVideos.contains(it) }
+        
+        if (allSelected) {
+            // Deselect all videos in folder
+            videoRepository.saveSelectedVideos(selectedVideos - videosInFolder.toSet())
+        } else {
+            // Select all videos in folder
+            videoRepository.saveSelectedVideos(selectedVideos + videosInFolder.toSet())
         }
     }
 }
