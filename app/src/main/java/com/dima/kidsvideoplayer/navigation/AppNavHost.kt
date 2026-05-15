@@ -42,6 +42,8 @@ fun AppNavHost(
                 videoPlayerManager = appState.videoPlayerManager,
                 playbackStateRepository = appState.playbackStateRepository,
                 onSecretDoorActivated = {
+                    // Pause video before navigating to parent dashboard
+                    appState.videoPlayerManager.pause()
                     // Navigate to parent dashboard when secret door is triggered
                     navController.navigate(Routes.PARENT_DASHBOARD) {
                         popUpTo(Routes.KID_PLAYER) { inclusive = false }
@@ -57,6 +59,8 @@ fun AppNavHost(
                 videoRepository = appState.videoRepository,
                 videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBackToKidMode = {
+                    // Play video before returning to kid mode
+                    appState.videoPlayerManager.play()
                     // Navigate back to kid player and enter kiosk mode
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
                     appState.enterKidMode()
@@ -78,6 +82,8 @@ fun AppNavHost(
                 videoRepository = appState.videoRepository,
                 videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBack = {
+                    // Play video when returning from file picker to parent dashboard
+                    appState.videoPlayerManager.play()
                     navController.popBackStack(Routes.PARENT_DASHBOARD, inclusive = false)
                 }
             )
