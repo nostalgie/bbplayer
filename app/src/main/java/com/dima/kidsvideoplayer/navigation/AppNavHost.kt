@@ -54,6 +54,7 @@ fun AppNavHost(
         composable(Routes.PARENT_DASHBOARD) {
             ParentDashboardScreen(
                 videoRepository = appState.videoRepository,
+                videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBackToKidMode = {
                     // Navigate back to kid player and enter kiosk mode
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
@@ -69,6 +70,7 @@ fun AppNavHost(
         composable(Routes.FILE_PICKER) {
             FilePickerScreen(
                 videoRepository = appState.videoRepository,
+                videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBack = {
                     navController.popBackStack(Routes.PARENT_DASHBOARD, inclusive = false)
                 }

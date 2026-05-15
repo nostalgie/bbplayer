@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.dima.kidsvideoplayer.ui.theme.CardSurface
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
+import com.dima.kidsvideoplayer.ui.theme.OrangeAccent
 import com.dima.kidsvideoplayer.ui.theme.RedButton
 
 /**
@@ -131,6 +132,7 @@ fun FilePickerTopBar(
  *
  * @param item The folder's file system info
  * @param videoCount Total number of videos in the folder (null if still counting)
+ * @param supportedVideoCount Number of supported videos (null if still checking compatibility)
  * @param selectedCount Number of videos currently selected in this folder
  * @param toggleableState The tri-state for the checkbox (Off / Indeterminate / On)
  * @param onSelect Called when the folder checkbox is toggled
@@ -140,6 +142,7 @@ fun FilePickerTopBar(
 fun FolderItem(
     item: FileSystemItem,
     videoCount: Int?,
+    supportedVideoCount: Int?,
     selectedCount: Int,
     toggleableState: ToggleableState,
     onSelect: () -> Unit,
@@ -186,13 +189,14 @@ fun FolderItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    // Secondary line: selection count or video count
+                    // Secondary line: selection count or supported video count
                     Text(
                         text = when {
                             videoCount == null -> "Подсчёт..."
-                            videoCount == 0 -> "Нет видео"
-                            selectedCount > 0 -> "Выбрано: $selectedCount из $videoCount"
-                            else -> "$videoCount видео"
+                            supportedVideoCount == null -> if (videoCount == 0) "Нет видео" else "$videoCount видео"
+                            supportedVideoCount == 0 && videoCount == 0 -> "Нет видео"
+                            selectedCount > 0 -> "Выбрано: $selectedCount из $supportedVideoCount"
+                            else -> "$supportedVideoCount видео"
                         },
                         fontSize = 12.sp,
                         color = Color.White.copy(alpha = 0.5f)
@@ -205,49 +209,77 @@ fun FolderItem(
 
 /**
  * Video file item in the file list.
+ *
+ * @param item The file's file system info
+ * @param isSelected Whether the file is currently selected
+ * @param isSupported null = still checking, true = fully supported, false = unsupported
+ * @param onSelect Called when the file checkbox/row is toggled
  */
 @Composable
 fun VideoFileItem(
     item: FileSystemItem,
     isSelected: Boolean,
+    isSupported: Boolean?,
     onSelect: () -> Unit
 ) {
+    val isSelectable = isSupported != false
+
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = if (isSelected) GreenPrimary.copy(alpha = 0.15f) else CardSurface
+        color = when {
+            !isSelectable -> CardSurface.copy(alpha = 0.5f)
+            isSelected -> GreenPrimary.copy(alpha = 0.15f)
+            else -> CardSurface
+        }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onSelect)
+                .then(
+                    if (isSelectable) Modifier.clickable(onClick = onSelect) else Modifier
+                )
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(
                 checked = isSelected,
-                onCheckedChange = { onSelect() },
+                onCheckedChange = if (isSelectable) {{ onSelect() }} else null,
+                enabled = isSelectable,
                 colors = CheckboxDefaults.colors(
                     checkedColor = GreenPrimary,
-                    uncheckedColor = Color.White.copy(alpha = 0.5f)
+                    uncheckedColor = Color.White.copy(alpha = 0.5f),
+                    disabledUncheckedColor = Color.White.copy(alpha = 0.2f),
+                    disabledCheckedColor = GreenPrimary.copy(alpha = 0.3f)
                 )
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "🎬", fontSize = 22.sp)
+            Text(
+                text = if (isSupported == false) "⚠️" else "🎬",
+                fontSize = 22.sp
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.name,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Color.White,
+                    color = if (isSelectable) Color.White else Color.White.copy(alpha = 0.4f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = formatFileSize(item.size),
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
+                if (isSupported == false) {
+                    Text(
+                        text = "не поддерживается",
+                        fontSize = 12.sp,
+                        color = OrangeAccent
+                    )
+                } else {
+                    Text(
+                        text = formatFileSize(item.size),
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
             }
         }
     }

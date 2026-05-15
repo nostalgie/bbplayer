@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.VideoRepository
+import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 
 /**
@@ -22,6 +23,7 @@ class AppState(
     val lockTaskManager: LockTaskManager,
     val videoRepository: VideoRepository,
     val videoPlayerManager: VideoPlayerManager,
+    val videoCompatibilityChecker: VideoCompatibilityChecker,
     val onEnterKidMode: () -> Unit,
     val onExitKidMode: () -> Unit,
     val onExitApp: () -> Unit
@@ -56,6 +58,7 @@ fun rememberAppState(
     lockTaskManager: LockTaskManager,
     videoRepository: VideoRepository,
     videoPlayerManager: VideoPlayerManager,
+    videoCompatibilityChecker: VideoCompatibilityChecker,
     onEnterKidMode: () -> Unit,
     onExitKidMode: () -> Unit,
     onExitApp: () -> Unit
@@ -68,6 +71,7 @@ fun rememberAppState(
                     lockTaskManager = lockTaskManager,
                     videoRepository = videoRepository,
                     videoPlayerManager = videoPlayerManager,
+                    videoCompatibilityChecker = videoCompatibilityChecker,
                     onEnterKidMode = onEnterKidMode,
                     onExitKidMode = onExitKidMode,
                     onExitApp = onExitApp
@@ -81,6 +85,7 @@ fun rememberAppState(
             lockTaskManager = lockTaskManager,
             videoRepository = videoRepository,
             videoPlayerManager = videoPlayerManager,
+            videoCompatibilityChecker = videoCompatibilityChecker,
             onEnterKidMode = onEnterKidMode,
             onExitKidMode = onExitKidMode,
             onExitApp = onExitApp
