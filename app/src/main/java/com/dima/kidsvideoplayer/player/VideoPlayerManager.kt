@@ -86,8 +86,9 @@ class VideoPlayerManager(
      * Set the list of video URIs as the playlist.
      * @param uris List of content URIs (from SAF with persistable permission)
      * @param startIndex Index to start playback from (default 0)
+     * @param startPositionMs Position in milliseconds to seek to within the start item (default 0)
      */
-    fun setVideoList(uris: List<String>, startIndex: Int = 0) {
+    fun setVideoList(uris: List<String>, startIndex: Int = 0, startPositionMs: Long = 0) {
         val exoPlayer = player ?: return
         exoPlayer.clearMediaItems()
 
@@ -103,7 +104,7 @@ class VideoPlayerManager(
         }
 
         if (uris.isNotEmpty()) {
-            exoPlayer.seekToDefaultPosition(safeIndex)
+            exoPlayer.seekTo(safeIndex, startPositionMs)
             exoPlayer.prepare()
         }
 
