@@ -44,9 +44,14 @@ fun BounceButton(
     textColor: Color = Color.White,
     icon: String = "",
     size: Dp = 80.dp,
+    width: Dp = Dp.Unspecified,
+    height: Dp = Dp.Unspecified,
     fontSize: TextUnit = 28.sp,
     modifier: Modifier = Modifier
 ) {
+    val buttonWidth = if (width != Dp.Unspecified) width else size
+    val buttonHeight = if (height != Dp.Unspecified) height else size
+
     var isPressed by remember { mutableStateOf(false) }
 
     // Spring-based scale animation on press
@@ -81,7 +86,8 @@ fun BounceButton(
 
     Surface(
         modifier = modifier
-            .size(size)
+            .width(buttonWidth)
+            .height(buttonHeight)
             .graphicsLayer {
                 scaleX = scale * pulseScale
                 scaleY = scale * pulseScale

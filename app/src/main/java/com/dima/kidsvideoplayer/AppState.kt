@@ -32,6 +32,14 @@ class AppState(
     var isLockTaskActive: Boolean by mutableStateOf(false)
         internal set
 
+    /**
+     * Pending video index to start playback from when returning to kid mode.
+     * Set by ParentDashboardScreen when user clicks a video, consumed by KidPlayerScreen.
+     * -1 means no pending index (use default behavior).
+     */
+    var pendingStartVideoIndex: Int by mutableStateOf(-1)
+        internal set
+
     /** Enter kiosk mode — updates state and delegates to [LockTaskManager]. */
     fun enterKidMode() {
         onEnterKidMode()

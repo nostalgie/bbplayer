@@ -82,9 +82,12 @@ fun PermissionRequestScreen(
 @Composable
 fun FilePickerTopBar(
     currentPath: String,
-    onNavigateUp: () -> Unit,
-    onBack: () -> Unit
+    storageRootPaths: Set<String>,
+    onNavigateUp: () -> Unit
 ) {
+    val isAtStorageRoot = currentPath == STORAGE_ROOT
+    val canNavigateUp = !isAtStorageRoot
+
     Surface(
         color = CardSurface,
         tonalElevation = 4.dp
@@ -96,25 +99,30 @@ fun FilePickerTopBar(
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Back button
-                TextButton(onClick = onBack) {
-                    Text("← Назад", color = Color.White, fontSize = 14.sp)
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 // Up button
-                IconButton(onClick = onNavigateUp, enabled = currentPath != ROOT_PATH) {
-                    Text("⬆", fontSize = 20.sp, color = if (currentPath != ROOT_PATH) Color.White else Color.Gray)
+                IconButton(onClick = onNavigateUp, enabled = canNavigateUp) {
+                    Text("⬆", fontSize = 20.sp, color = if (canNavigateUp) Color.White else Color.Gray)
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+
                 // Path display
+                val displayText = when {
+                    isAtStorageRoot -> "Хранилища"
+                    currentPath in storageRootPaths -> {
+                        // Show just the storage name
+                        if (currentPath == INTERNAL_STORAGE_PATH) "Внутренняя память" else currentPath.removePrefix("$STORAGE_ROOT/")
+                    }
+                    else -> {
+                        // Show relative path from storage root
+                        val storageRoot = storageRootPaths.find { currentPath.startsWith(it) }
+                        if (storageRoot != null) {
+                            currentPath.removePrefix(storageRoot).ifEmpty { "/" }
+                        } else {
+                            currentPath
+                        }
+                    }
+                }
                 Text(
-                    text = currentPath.removePrefix("/storage/emulated/0").ifEmpty { "/" },
+                    text = displayText,
                     fontSize = 14.sp,
                     color = Color.White.copy(alpha = 0.8f),
                     maxLines = 1,
@@ -123,6 +131,49 @@ fun FilePickerTopBar(
                 )
             }
             Divider(color = Color.White.copy(alpha = 0.1f))
+        }
+    }
+}
+
+/**
+ * Storage volume item (internal storage or SD card).
+ */
+@Composable
+fun StorageVolumeItem(
+    volume: StorageVolume,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = CardSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (volume.isRemovable) "💾" else "📱",
+                fontSize = 28.sp
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(
+                    text = volume.name,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
+                )
+                Text(
+                    text = volume.path,
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.4f)
+                )
+            }
         }
     }
 }
@@ -162,6 +213,7 @@ fun FolderItem(
         ) {
             // Tri-state checkbox for selection
             TriStateCheckbox(
+                
                 state = toggleableState,
                 onClick = onSelect,
                 colors = CheckboxDefaults.colors(

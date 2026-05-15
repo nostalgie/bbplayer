@@ -47,7 +47,8 @@ fun AppNavHost(
                     }
                 },
                 onExitKidMode = { appState.exitKidMode() },
-                isLockTaskActive = appState.isLockTaskActive
+                isLockTaskActive = appState.isLockTaskActive,
+                pendingStartVideoIndex = appState.pendingStartVideoIndex
             )
         }
 
@@ -62,6 +63,11 @@ fun AppNavHost(
                 },
                 onNavigateToFilePicker = {
                     navController.navigate(Routes.FILE_PICKER)
+                },
+                onPlayVideo = { index ->
+                    appState.pendingStartVideoIndex = index
+                    navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
+                    appState.enterKidMode()
                 },
                 onExitApp = { appState.exitApp() }
             )

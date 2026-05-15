@@ -56,7 +56,8 @@ fun KidPlayerScreen(
     videoPlayerManager: VideoPlayerManager,
     onSecretDoorActivated: () -> Unit,
     onExitKidMode: () -> Unit,
-    isLockTaskActive: Boolean
+    isLockTaskActive: Boolean,
+    pendingStartVideoIndex: Int = -1
 ) {
     val context = LocalContext.current
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -64,10 +65,11 @@ fun KidPlayerScreen(
     // PIN dialog state
     var showPinDialog by remember { mutableStateOf(false) }
 
-    // Initialize player when URIs change
-    LaunchedEffect(videoUris) {
+    // Initialize player when URIs change or when a specific video is requested
+    LaunchedEffect(videoUris, pendingStartVideoIndex) {
         if (videoUris.isNotEmpty()) {
-            videoPlayerManager.setVideoList(videoUris)
+            val startIndex = pendingStartVideoIndex.coerceAtLeast(0)
+            videoPlayerManager.setVideoList(videoUris, startIndex)
         }
     }
 

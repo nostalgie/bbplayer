@@ -9,8 +9,66 @@ val VIDEO_EXTENSIONS = setOf(
     "m4v", "ts", "mpg", "mpeg", "rmvb", "vob"
 )
 
-/** Root directory for the file browser */
-const val ROOT_PATH = "/storage/emulated/0/"
+/** Storage root — shows available storage volumes */
+const val STORAGE_ROOT = "/storage"
+
+/** Internal storage path */
+const val INTERNAL_STORAGE_PATH = "/storage/emulated/0"
+
+/** Legacy root path for backward compatibility */
+const val ROOT_PATH = INTERNAL_STORAGE_PATH
+
+/**
+ * Represents a storage volume (internal storage or SD card).
+ */
+data class StorageVolume(
+    val name: String,
+    val path: String,
+    val isRemovable: Boolean
+)
+
+/**
+ * List available storage volumes on the device.
+ * Returns internal storage first, then any removable storage (SD cards).
+ */
+fun listStorageVolumes(): List<StorageVolume> {
+    val volumes = mutableListOf<StorageVolume>()
+
+    // Internal storage
+    val internal = File(INTERNAL_STORAGE_PATH)
+    if (internal.exists() && internal.isDirectory && internal.canRead()) {
+        volumes.add(
+            StorageVolume(
+                name = "Внутренняя память",
+                path = internal.absolutePath,
+                isRemovable = false
+            )
+        )
+    }
+
+    // External storage (SD cards) — typically mounted as /storage/XXXX-XXXX
+    val storageDir = File(STORAGE_ROOT)
+    val subDirs = storageDir.listFiles()
+    if (subDirs != null) {
+        for (dir in subDirs.sortedBy { it.name }) {
+            val name = dir.name
+            // Skip system directories and internal storage
+            if (name == "emulated" || name == "self") continue
+            if (!dir.isDirectory || name.startsWith(".")) continue
+            if (!dir.canRead()) continue
+            // SD card mount points typically have format like XXXX-XXXX
+            volumes.add(
+                StorageVolume(
+                    name = "SD-карта",
+                    path = dir.absolutePath,
+                    isRemovable = true
+                )
+            )
+        }
+    }
+
+    return volumes
+}
 
 /**
  * Represents a file system item (file or directory).

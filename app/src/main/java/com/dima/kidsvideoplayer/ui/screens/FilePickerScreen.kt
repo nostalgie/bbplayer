@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.CompatibilityResult
 import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.ui.screens.filepicker.*
+import com.dima.kidsvideoplayer.ui.components.VerticalScrollbar
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
 import com.dima.kidsvideoplayer.ui.theme.RedButton
@@ -80,8 +82,19 @@ fun FilePickerScreen(
         hasStoragePermission.value = granted
     }
 
-    // Current directory path
-    var currentPath by remember { mutableStateOf(ROOT_PATH) }
+    // Current directory path — starts at storage root (shows storage volumes)
+    var currentPath by remember { mutableStateOf(STORAGE_ROOT) }
+
+    // Available storage volumes
+    var storageVolumes by remember { mutableStateOf<List<StorageVolume>>(emptyList()) }
+
+    // Load storage volumes once
+    LaunchedEffect(Unit) {
+        storageVolumes = withContext(Dispatchers.IO) { listStorageVolumes() }
+    }
+
+    // Set of storage root paths (for navigation logic)
+    val storageRootPaths = storageVolumes.map { it.path }.toSet()
 
     // Set of selected file absolute paths — immutable set to ensure recomposition
     var selectedFiles by remember { mutableStateOf(emptySet<String>()) }
@@ -102,8 +115,15 @@ fun FilePickerScreen(
     // Persists across directory navigations within the session so each file is only checked once.
     val compatibilityCache = remember { mutableStateOf<Map<String, CompatibilityResult>>(emptyMap()) }
 
-    // Load directory contents when path changes
+    // Load directory contents when path changes (skip for storage root)
     LaunchedEffect(currentPath) {
+        if (currentPath == STORAGE_ROOT) {
+            // Storage root level — no directory items to load
+            directoryItems = emptyList()
+            isLoading = false
+            return@LaunchedEffect
+        }
+
         isLoading = true
         errorMessage = null
         try {
@@ -212,15 +232,53 @@ fun FilePickerScreen(
         // Top bar with navigation
         FilePickerTopBar(
             currentPath = currentPath,
+            storageRootPaths = storageRootPaths.toSet(),
             onNavigateUp = {
-                val parent = File(currentPath).parentFile
-                if (parent != null && parent.canRead()) {
-                    currentPath = parent.absolutePath
+                if (currentPath in storageRootPaths) {
+                    // At storage root → go to storage selection
+                    currentPath = STORAGE_ROOT
+                } else {
+                    // Normal directory → go to parent
+                    val parent = File(currentPath).parentFile
+                    if (parent != null) {
+                        // Don't navigate above the storage root
+                        if (parent.absolutePath in storageRootPaths) {
+                            currentPath = parent.absolutePath
+                        } else if (parent.absolutePath == STORAGE_ROOT || parent.absolutePath == "/storage/emulated") {
+                            currentPath = STORAGE_ROOT
+                        } else if (parent.canRead()) {
+                            currentPath = parent.absolutePath
+                        }
+                    }
                 }
-            },
-            onBack = onBack
+            }
         )
 
+        // Storage selection level
+        if (currentPath == STORAGE_ROOT) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(items = storageVolumes, key = { it.path }) { volume ->
+                    StorageVolumeItem(
+                        volume = volume,
+                        onClick = { currentPath = volume.path }
+                    )
+                }
+            }
+
+            // Bottom bar (only cancel button at storage root)
+            FilePickerBottomBar(
+                selectedFileCount = 0,
+                selectedFolderCount = 0,
+                onConfirm = {},
+                onCancel = onBack
+            )
+        } else {
         // Select All / Deselect All buttons
         Row(
             modifier = Modifier
@@ -315,10 +373,15 @@ fun FilePickerScreen(
             }
         } else {
             // File/folder list
-            LazyColumn(
+            val filePickerListState = rememberLazyListState()
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+            ) {
+            LazyColumn(
+                state = filePickerListState,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -407,6 +470,8 @@ fun FilePickerScreen(
                     )
                 }
             }
+            VerticalScrollbar(state = filePickerListState)
+            } // end Box
         }
 
         // Bottom bar with selection info and action buttons
@@ -440,6 +505,7 @@ fun FilePickerScreen(
             },
             onCancel = onBack
         )
+        } // end else (not storage root)
     }
 }
 

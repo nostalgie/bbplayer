@@ -87,7 +87,7 @@ KidPlayerScreen ◄── VideoRepository.videoUris (Flow)
 
 ### Секретная дверь (Kid → Parent)
 ```
-Long press "v1.0" (3 сек)
+Long press "v1.0" (1 сек)
   → PinDialog показан
   → ПИН "1234" введён
   → onExitKidMode() (stopLockTask)
