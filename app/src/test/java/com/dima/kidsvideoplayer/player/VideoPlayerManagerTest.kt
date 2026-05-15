@@ -55,7 +55,7 @@ class VideoPlayerManagerTest {
 
         verify(mockPlayer).clearMediaItems()
         verify(mockPlayer, times(3)).addMediaItem(any())
-        verify(mockPlayer).seekToDefaultPosition(0)
+        verify(mockPlayer).seekTo(0, 0L)
         verify(mockPlayer).prepare()
         assertThat(manager.currentMediaItemIndex).isEqualTo(0)
     }
@@ -65,8 +65,17 @@ class VideoPlayerManagerTest {
         val uris = listOf("content://media/1", "content://media/2", "content://media/3")
         manager.setVideoList(uris, startIndex = 2)
 
-        verify(mockPlayer).seekToDefaultPosition(2)
+        verify(mockPlayer).seekTo(2, 0L)
         assertThat(manager.currentMediaItemIndex).isEqualTo(2)
+    }
+
+    @Test
+    fun setVideoList_withStartPosition_seeksToCorrectPosition() {
+        val uris = listOf("content://media/1", "content://media/2", "content://media/3")
+        manager.setVideoList(uris, startIndex = 1, startPositionMs = 5000L)
+
+        verify(mockPlayer).seekTo(1, 5000L)
+        assertThat(manager.currentMediaItemIndex).isEqualTo(1)
     }
 
     @Test
@@ -75,7 +84,7 @@ class VideoPlayerManagerTest {
         manager.setVideoList(uris, startIndex = 10)
 
         // startIndex should be coerced to last valid index (1)
-        verify(mockPlayer).seekToDefaultPosition(1)
+        verify(mockPlayer).seekTo(1, 0L)
         // currentMediaItemIndex is now also coerced (was a bug before fix)
         assertThat(manager.currentMediaItemIndex).isEqualTo(1)
     }
@@ -86,7 +95,7 @@ class VideoPlayerManagerTest {
 
         verify(mockPlayer).clearMediaItems()
         verify(mockPlayer, never()).prepare()
-        verify(mockPlayer, never()).seekToDefaultPosition(any())
+        verify(mockPlayer, never()).seekTo(any(), any())
     }
 
     @Test

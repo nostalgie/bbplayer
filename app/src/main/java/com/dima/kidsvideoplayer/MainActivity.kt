@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.dima.kidsvideoplayer.admin.LockTaskManager
+import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.navigation.AppNavHost
 import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var videoRepository: VideoRepository
     private lateinit var videoPlayerManager: VideoPlayerManager
     private lateinit var videoCompatibilityChecker: VideoCompatibilityChecker
+    private lateinit var playbackStateRepository: PlaybackStateRepository
 
     // Track whether we're currently in kiosk/lock-task mode
     private var isLockTaskActive = mutableStateOf(false)
@@ -43,6 +45,7 @@ class MainActivity : ComponentActivity() {
         videoRepository = VideoRepository(appContext)
         videoPlayerManager = VideoPlayerManager(appContext)
         videoCompatibilityChecker = VideoCompatibilityChecker(appContext)
+        playbackStateRepository = PlaybackStateRepository(appContext)
 
         // Full immersive mode — hide status bar and navigation bar
         enableEdgeToEdge()
@@ -62,6 +65,7 @@ class MainActivity : ComponentActivity() {
                         videoRepository = videoRepository,
                         videoPlayerManager = videoPlayerManager,
                         videoCompatibilityChecker = videoCompatibilityChecker,
+                        playbackStateRepository = playbackStateRepository,
                         onEnterKidMode = { enterKidMode() },
                         onExitKidMode = { exitKidMode() },
                         onExitApp = { exitApp() }
@@ -100,6 +104,9 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         videoPlayerManager.player?.pause()
+
+        // Save playback state when app goes to background
+        savePlaybackState()
     }
 
     override fun onResume() {
@@ -158,6 +165,32 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Exiting app from Parent Dashboard")
         exitKidMode()
         finishAffinity()
+    }
+
+    // ==============================
+    // Playback State Persistence
+    // ==============================
+
+    /**
+     * Save current playback state (video URI + position) so we can resume later.
+     * Called from [onPause] to capture the most up-to-date position.
+     */
+    private fun savePlaybackState() {
+        val player = videoPlayerManager.player ?: return
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0 || currentIndex >= player.mediaItemCount) return
+
+        val mediaItem = player.getMediaItemAt(currentIndex)
+        val uri = mediaItem.localConfiguration?.uri?.toString() ?: return
+        val positionMs = player.currentPosition.coerceAtLeast(0L)
+
+        playbackStateRepository.save(
+            PlaybackStateRepository.PlaybackState(
+                videoUri = uri,
+                positionMs = positionMs
+            )
+        )
+        Log.d(TAG, "Saved playback state: uri=$uri, position=${positionMs}ms")
     }
 
     // ==============================

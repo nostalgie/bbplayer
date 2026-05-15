@@ -1,5 +1,6 @@
 package com.dima.kidsvideoplayer.ui.screens
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -32,6 +33,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
+import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.components.BounceButton
@@ -54,6 +56,7 @@ import kotlinx.coroutines.delay
 fun KidPlayerScreen(
     videoRepository: VideoRepository,
     videoPlayerManager: VideoPlayerManager,
+    playbackStateRepository: PlaybackStateRepository,
     onSecretDoorActivated: () -> Unit,
     isLockTaskActive: Boolean,
     pendingStartVideoIndex: Int = -1
@@ -64,11 +67,49 @@ fun KidPlayerScreen(
     // PIN dialog state
     var showPinDialog by remember { mutableStateOf(false) }
 
+    // Track whether this is the first launch with videos (for restoring state)
+    var hasRestoredState by remember { mutableStateOf(false) }
+
     // Initialize player when URIs change or when a specific video is requested
     LaunchedEffect(videoUris, pendingStartVideoIndex) {
         if (videoUris.isNotEmpty()) {
-            val startIndex = pendingStartVideoIndex.coerceAtLeast(0)
-            videoPlayerManager.setVideoList(videoUris, startIndex)
+            val startIndex: Int
+            val startPositionMs: Long
+
+            if (pendingStartVideoIndex >= 0) {
+                // Explicit video requested from parent dashboard
+                startIndex = pendingStartVideoIndex
+                startPositionMs = 0L
+            } else if (!hasRestoredState) {
+                // First launch — try to restore saved playback state
+                hasRestoredState = true
+                val saved = playbackStateRepository.get()
+                if (saved != null) {
+                    val savedIndex = videoUris.indexOf(saved.videoUri)
+                    if (savedIndex >= 0) {
+                        // Saved video is still available — restore position
+                        Log.d(TAG, "Restoring playback: uri=${saved.videoUri}, position=${saved.positionMs}")
+                        startIndex = savedIndex
+                        startPositionMs = saved.positionMs
+                    } else {
+                        // Saved video no longer available — start from beginning
+                        Log.d(TAG, "Saved video no longer available, starting from first video")
+                        startIndex = 0
+                        startPositionMs = 0L
+                        playbackStateRepository.clear()
+                    }
+                } else {
+                    // No saved state — default behavior
+                    startIndex = 0
+                    startPositionMs = 0L
+                }
+            } else {
+                // Subsequent URI changes (not first launch)
+                startIndex = 0
+                startPositionMs = 0L
+            }
+
+            videoPlayerManager.setVideoList(videoUris, startIndex, startPositionMs)
         }
     }
 
@@ -105,6 +146,23 @@ fun KidPlayerScreen(
                 sliderValue = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
             }
             delay(250)
+        }
+    }
+
+    // Periodically save playback state every 5 seconds
+    LaunchedEffect(exoPlayer, videoUris) {
+        while (true) {
+            delay(5_000L)
+            val currentIndex = exoPlayer.currentMediaItemIndex
+            if (currentIndex >= 0 && currentIndex < videoUris.size) {
+                val positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+                playbackStateRepository.save(
+                    PlaybackStateRepository.PlaybackState(
+                        videoUri = videoUris[currentIndex],
+                        positionMs = positionMs
+                    )
+                )
+            }
         }
     }
 
@@ -367,3 +425,5 @@ fun KidPlayerScreen(
 // Extension property to check if player is playing
 private val Player.isPlaying: Boolean
     get() = playbackState == Player.STATE_READY && playWhenReady
+
+private const val TAG = "KidPlayerScreen"

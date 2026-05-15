@@ -40,6 +40,7 @@ fun AppNavHost(
             KidPlayerScreen(
                 videoRepository = appState.videoRepository,
                 videoPlayerManager = appState.videoPlayerManager,
+                playbackStateRepository = appState.playbackStateRepository,
                 onSecretDoorActivated = {
                     // Navigate to parent dashboard when secret door is triggered
                     navController.navigate(Routes.PARENT_DASHBOARD) {
