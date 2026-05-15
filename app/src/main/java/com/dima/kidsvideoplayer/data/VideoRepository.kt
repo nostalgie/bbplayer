@@ -30,6 +30,7 @@ class VideoRepository(private val context: Context) {
     companion object {
         private val VIDEO_URIS_KEY = stringPreferencesKey("video_uris")
         private val EXPANDED_FOLDERS_KEY = stringPreferencesKey("expanded_folders")
+        private val SELECTED_VIDEOS_KEY = stringPreferencesKey("selected_videos")
         private const val LEGACY_SEPARATOR = "|"
     }
 
@@ -71,6 +72,18 @@ class VideoRepository(private val context: Context) {
      */
     val expandedFolders: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         val raw = prefs[EXPANDED_FOLDERS_KEY] ?: ""
+        if (raw.isBlank()) {
+            emptySet()
+        } else {
+            raw.split(",").toSet()
+        }
+    }
+
+    /**
+     * Get the set of selected video URIs as a Flow.
+     */
+    val selectedVideos: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[SELECTED_VIDEOS_KEY] ?: ""
         if (raw.isBlank()) {
             emptySet()
         } else {
@@ -134,6 +147,47 @@ class VideoRepository(private val context: Context) {
     suspend fun saveExpandedFolders(folders: Set<String>) {
         context.dataStore.edit { prefs ->
             prefs[EXPANDED_FOLDERS_KEY] = folders.joinToString(",")
+        }
+    }
+
+    /**
+     * Save the set of selected video URIs.
+     */
+    suspend fun saveSelectedVideos(selected: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[SELECTED_VIDEOS_KEY] = selected.joinToString(",")
+        }
+    }
+
+    /**
+     * Toggle video selection status.
+     */
+    suspend fun toggleVideoSelection(uri: String) {
+        context.dataStore.edit { prefs ->
+            val raw = prefs[SELECTED_VIDEOS_KEY] ?: ""
+            val current = if (raw.isBlank()) emptySet() else raw.split(",").toSet()
+            val updated = if (uri in current) current - uri else current + uri
+            prefs[SELECTED_VIDEOS_KEY] = updated.joinToString(",")
+        }
+    }
+
+    /**
+     * Select all videos.
+     */
+    suspend fun selectAllVideos() {
+        context.dataStore.edit { prefs ->
+            val raw = prefs[VIDEO_URIS_KEY] ?: ""
+            val allVideos = deserialize(raw)
+            prefs[SELECTED_VIDEOS_KEY] = allVideos.joinToString(",")
+        }
+    }
+
+    /**
+     * Deselect all videos.
+     */
+    suspend fun deselectAllVideos() {
+        context.dataStore.edit { prefs ->
+            prefs[SELECTED_VIDEOS_KEY] = ""
         }
     }
 }
