@@ -124,6 +124,9 @@ fun FilePickerScreen(
     // Persists across directory navigations within the session so each file is only checked once.
     val compatibilityCache = remember { mutableStateOf<Map<String, CompatibilityResult>>(emptyMap()) }
 
+    // Track folders currently being scanned to prevent race conditions
+    var scanningFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
+
     // Load directory contents when path changes (skip for storage root)
     LaunchedEffect(currentPath) {
         if (currentPath == STORAGE_ROOT) {
@@ -174,10 +177,17 @@ fun FilePickerScreen(
                         val folderResults = chunk.map { item ->
                             if (scanCancellationRequested) return@map null
                             async {
-                                val videos = withContext(Dispatchers.IO) {
-                                    findVideosRecursively(File(item.path))
+                                // Mark folder as being scanned
+                                scanningFolders = scanningFolders + item.path
+                                try {
+                                    val videos = withContext(Dispatchers.IO) {
+                                        findVideosRecursively(File(item.path))
+                                    }
+                                    item.path to videos.map { it.absolutePath }
+                                } finally {
+                                    // Remove from scanning set when done
+                                    scanningFolders = scanningFolders - item.path
                                 }
-                                item.path to videos.map { it.absolutePath }
                             }
                         }
                         
@@ -254,10 +264,17 @@ fun FilePickerScreen(
                         // Process folders in parallel within chunks
                         val folderResults = chunk.map { item ->
                             async {
-                                val videos = withContext(Dispatchers.IO) {
-                                    findVideosRecursively(File(item.path))
+                                // Mark folder as being scanned
+                                scanningFolders = scanningFolders + item.path
+                                try {
+                                    val videos = withContext(Dispatchers.IO) {
+                                        findVideosRecursively(File(item.path))
+                                    }
+                                    item.path to videos.map { it.absolutePath }
+                                } finally {
+                                    // Remove from scanning set when done
+                                    scanningFolders = scanningFolders - item.path
                                 }
-                                item.path to videos.map { it.absolutePath }
                             }
                         }
                         
@@ -578,6 +595,7 @@ fun FilePickerScreen(
                     } else 0
 
                     val toggleableState = when {
+                        item.path in scanningFolders -> ToggleableState.Off
                         cachedPaths == null -> ToggleableState.Off
                         supportedPaths.isEmpty() && allChecked -> ToggleableState.Off
                         selectedCount == 0 -> ToggleableState.Off
@@ -591,7 +609,11 @@ fun FilePickerScreen(
                         supportedVideoCount = supportedVideoCount,
                         selectedCount = selectedCount,
                         toggleableState = toggleableState,
+                        isScanning = item.path in scanningFolders,
                         onSelect = {
+                            // Disable selection if folder is being scanned
+                            if (item.path in scanningFolders) return@FolderItem
+                            
                             val paths = cachedPaths
                             if (paths != null) {
                                 if (toggleableState == ToggleableState.On) {
@@ -605,13 +627,20 @@ fun FilePickerScreen(
                                     selectedFiles = selectedFiles + selectable
                                 }
                             } else {
-                                // Still loading — find videos asynchronously
-                                coroutineScope.launch {
-                                    val videos = withContext(Dispatchers.IO) {
-                                        findVideosRecursively(File(item.path))
+                                // Start scanning if not already in progress
+                                if (item.path !in scanningFolders) {
+                                    coroutineScope.launch {
+                                        scanningFolders = scanningFolders + item.path
+                                        try {
+                                            val videos = withContext(Dispatchers.IO) {
+                                                findVideosRecursively(File(item.path))
+                                            }
+                                            val foundPaths = videos.map { it.absolutePath }
+                                            selectedFiles = selectedFiles + foundPaths
+                                        } finally {
+                                            scanningFolders = scanningFolders - item.path
+                                        }
                                     }
-                                    val foundPaths = videos.map { it.absolutePath }
-                                    selectedFiles = selectedFiles + foundPaths
                                 }
                             }
                         },

@@ -186,6 +186,7 @@ fun StorageVolumeItem(
  * @param supportedVideoCount Number of supported videos (null if still checking compatibility)
  * @param selectedCount Number of videos currently selected in this folder
  * @param toggleableState The tri-state for the checkbox (Off / Indeterminate / On)
+ * @param isScanning Whether the folder is currently being scanned for videos
  * @param onSelect Called when the folder checkbox is toggled
  * @param onClick Called when the folder body is clicked (navigates into folder)
  */
@@ -196,6 +197,7 @@ fun FolderItem(
     supportedVideoCount: Int?,
     selectedCount: Int,
     toggleableState: ToggleableState,
+    isScanning: Boolean,
     onSelect: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -213,9 +215,9 @@ fun FolderItem(
         ) {
             // Tri-state checkbox for selection
             TriStateCheckbox(
-                
                 state = toggleableState,
-                onClick = onSelect,
+                onClick = if (!isScanning) onSelect else null,
+                enabled = !isScanning,
                 colors = CheckboxDefaults.colors(
                     checkedColor = GreenPrimary,
                     uncheckedColor = Color.White.copy(alpha = 0.5f)
@@ -244,6 +246,7 @@ fun FolderItem(
                     // Secondary line: selection count or supported video count
                     Text(
                         text = when {
+                            isScanning -> "Сканирование..."
                             videoCount == null -> "Подсчёт..."
                             supportedVideoCount == null -> if (videoCount == 0) "Нет видео" else "$videoCount видео"
                             supportedVideoCount == 0 && videoCount == 0 -> "Нет видео"
@@ -251,7 +254,7 @@ fun FolderItem(
                             else -> "$supportedVideoCount видео"
                         },
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.5f)
+                        color = Color.White.copy(alpha = if (isScanning) 0.8f else 0.5f)
                     )
                 }
             }
