@@ -221,13 +221,13 @@ fun FolderItem(
                     uncheckedColor = Color.White.copy(alpha = 0.5f)
                 )
             )
+            Spacer(modifier = Modifier.width(8.dp))
 
             // Folder content (clickable to navigate)
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(onClick = onClick)
-                    .padding(start = 8.dp),
+                    .clickable(onClick = onClick),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text = "📁", fontSize = 24.sp)
