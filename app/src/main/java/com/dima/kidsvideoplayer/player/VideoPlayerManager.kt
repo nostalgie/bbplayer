@@ -158,6 +158,20 @@ class VideoPlayerManager(
     }
 
     /**
+     * Pause the current video playback.
+     */
+    fun pause() {
+        player?.pause()
+    }
+
+    /**
+     * Resume the current video playback.
+     */
+    fun play() {
+        player?.play()
+    }
+
+    /**
      * Get total number of items in the playlist.
      */
     fun getMediaItemCount(): Int {
