@@ -90,45 +90,17 @@ fun ParentDashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(DashboardBackground)
-            .padding(24.dp)
+            .padding(12.dp)
     ) {
         // ==============================
-        // Header
+        // Header: Add file on left, Back + Folder on right
         // ==============================
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
-            Text(
-                text = "🔒 Родительская панель",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            // Back to Kid Mode button
-            BounceButton(
-                text = "Назад",
-                onClick = onBackToKidMode,
-                backgroundColor = GreenPrimary,
-                textColor = Color.White,
-                icon = "👶",
-                size = 100.dp,
-                fontSize = 20.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ==============================
-        // Add Video Buttons
-        // ==============================
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            // Add video file button (left side)
             BounceButton(
                 text = "Добавить файл",
                 onClick = {
@@ -141,30 +113,45 @@ fun ParentDashboardScreen(
                 fontSize = 18.sp
             )
 
-            BounceButton(
-                text = "Из папки",
-                onClick = onNavigateToFilePicker,
-                backgroundColor = FolderBlue,
-                textColor = Color.White,
-                icon = "📂",
-                size = 120.dp,
-                fontSize = 18.sp
-            )
+            // Right side: Back button on top, Folder button below
+            Column(horizontalAlignment = Alignment.End) {
+                BounceButton(
+                    text = "Назад",
+                    onClick = onBackToKidMode,
+                    backgroundColor = GreenPrimary,
+                    textColor = Color.White,
+                    icon = "👶",
+                    size = 100.dp,
+                    fontSize = 20.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                BounceButton(
+                    text = "Из папки",
+                    onClick = onNavigateToFilePicker,
+                    backgroundColor = FolderBlue,
+                    textColor = Color.White,
+                    icon = "📂",
+                    size = 120.dp,
+                    fontSize = 18.sp
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // ==============================
         // Video List
         // ==============================
         Text(
             text = "Видео (${videoUris.size}):",
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             color = Color.White.copy(alpha = 0.7f)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         if (videoUris.isEmpty()) {
             Box(
@@ -185,7 +172,7 @@ fun ParentDashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(
                     items = videoUris,
@@ -205,41 +192,54 @@ fun ParentDashboardScreen(
         }
 
         // ==============================
-        // Clear All Button
+        // Clear All + Exit buttons in one row
         // ==============================
         if (videoUris.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            BounceButton(
-                text = "Удалить все",
-                onClick = {
-                    coroutineScope.launch {
-                        videoRepository.clearAll()
-                    }
-                },
-                backgroundColor = RedButton,
-                textColor = Color.White,
-                size = 100.dp,
-                fontSize = 14.sp
-            )
-        }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BounceButton(
+                    text = "Удалить все",
+                    onClick = {
+                        coroutineScope.launch {
+                            videoRepository.clearAll()
+                        }
+                    },
+                    backgroundColor = RedButton,
+                    textColor = Color.White,
+                    size = 100.dp,
+                    fontSize = 14.sp
+                )
 
-        // ==============================
-        // Exit App Button
-        // ==============================
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            BounceButton(
-                text = "Выйти",
-                onClick = onExitApp,
-                backgroundColor = ExitRed,
-                textColor = Color.White,
-                icon = "🚪",
-                size = 100.dp,
-                fontSize = 16.sp
-            )
+                BounceButton(
+                    text = "Выйти",
+                    onClick = onExitApp,
+                    backgroundColor = ExitRed,
+                    textColor = Color.White,
+                    icon = "🚪",
+                    size = 100.dp,
+                    fontSize = 16.sp
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                BounceButton(
+                    text = "Выйти",
+                    onClick = onExitApp,
+                    backgroundColor = ExitRed,
+                    textColor = Color.White,
+                    icon = "🚪",
+                    size = 100.dp,
+                    fontSize = 16.sp
+                )
+            }
         }
     }
 }
@@ -263,14 +263,14 @@ private fun VideoListItem(
     }
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         color = CardSurface,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
