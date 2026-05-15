@@ -2,6 +2,7 @@ package com.dima.kidsvideoplayer.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dima.kidsvideoplayer.data.VideoRepository
+import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.ui.components.BounceButton
 import com.dima.kidsvideoplayer.ui.theme.CardSurface
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
@@ -44,6 +46,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ParentDashboardScreen(
     videoRepository: VideoRepository,
+    videoCompatibilityChecker: VideoCompatibilityChecker,
     onBackToKidMode: () -> Unit,
     onNavigateToFilePicker: () -> Unit = {},
     onExitApp: () -> Unit = {}
@@ -67,9 +70,18 @@ fun ParentDashboardScreen(
                 e.printStackTrace()
             }
 
-            // Save URI to DataStore
+            // Run compatibility check before adding
             coroutineScope.launch {
-                videoRepository.addVideoUri(it.toString())
+                val result = videoCompatibilityChecker.checkCompatibility(it)
+                if (result.isFullySupported) {
+                    videoRepository.addVideoUri(it.toString())
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Видео не поддерживается на этом устройстве",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }

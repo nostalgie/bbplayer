@@ -20,6 +20,7 @@ import androidx.navigation.compose.rememberNavController
 import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.navigation.AppNavHost
+import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.theme.KidsVideoPlayerTheme
 
@@ -28,6 +29,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var lockTaskManager: LockTaskManager
     private lateinit var videoRepository: VideoRepository
     private lateinit var videoPlayerManager: VideoPlayerManager
+    private lateinit var videoCompatibilityChecker: VideoCompatibilityChecker
 
     // Track whether we're currently in kiosk/lock-task mode
     private var isLockTaskActive = mutableStateOf(false)
@@ -40,6 +42,7 @@ class MainActivity : ComponentActivity() {
         lockTaskManager = LockTaskManager(appContext)
         videoRepository = VideoRepository(appContext)
         videoPlayerManager = VideoPlayerManager(appContext)
+        videoCompatibilityChecker = VideoCompatibilityChecker(appContext)
 
         // Full immersive mode — hide status bar and navigation bar
         enableEdgeToEdge()
@@ -58,6 +61,7 @@ class MainActivity : ComponentActivity() {
                         lockTaskManager = lockTaskManager,
                         videoRepository = videoRepository,
                         videoPlayerManager = videoPlayerManager,
+                        videoCompatibilityChecker = videoCompatibilityChecker,
                         onEnterKidMode = { enterKidMode() },
                         onExitKidMode = { exitKidMode() },
                         onExitApp = { exitApp() }

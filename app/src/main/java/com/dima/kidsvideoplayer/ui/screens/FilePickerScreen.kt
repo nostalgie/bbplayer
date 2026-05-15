@@ -25,10 +25,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.dima.kidsvideoplayer.data.VideoRepository
+import com.dima.kidsvideoplayer.player.CompatibilityResult
+import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.ui.screens.filepicker.*
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
-import com.dima.kidsvideoplayer.ui.theme.OrangeAccent
 import com.dima.kidsvideoplayer.ui.theme.RedButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -52,6 +53,7 @@ import java.io.File
 @Composable
 fun FilePickerScreen(
     videoRepository: VideoRepository,
+    videoCompatibilityChecker: VideoCompatibilityChecker,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -96,6 +98,10 @@ fun FilePickerScreen(
     // Cached video file paths for folders: folder path -> list of video paths (null means still loading)
     val folderVideoPaths = remember { mutableStateOf<Map<String, List<String>?>>(emptyMap()) }
 
+    // Compatibility check cache: file absolute path -> result.
+    // Persists across directory navigations within the session so each file is only checked once.
+    val compatibilityCache = remember { mutableStateOf<Map<String, CompatibilityResult>>(emptyMap()) }
+
     // Load directory contents when path changes
     LaunchedEffect(currentPath) {
         isLoading = true
@@ -109,6 +115,7 @@ fun FilePickerScreen(
             folderVideoPaths.value = items
                 .filter { it.isDirectory }
                 .associate { it.path to null }
+
             // Launch async loading of video paths for each folder
             for (item in items.filter { it.isDirectory }) {
                 launch {
@@ -119,6 +126,38 @@ fun FilePickerScreen(
                     val current = folderVideoPaths.value.toMutableMap()
                     current[item.path] = paths
                     folderVideoPaths.value = current
+
+                    // Launch compatibility checks for videos in this folder
+                    for (videoPath in paths) {
+                        launch {
+                            if (videoPath in compatibilityCache.value) return@launch
+                            val uri = Uri.fromFile(File(videoPath))
+                            val result = videoCompatibilityChecker.checkCompatibility(uri)
+                            val updated = compatibilityCache.value.toMutableMap()
+                            updated[videoPath] = result
+                            compatibilityCache.value = updated
+                            // Auto-deselect unsupported files
+                            if (!result.isFullySupported) {
+                                selectedFiles = selectedFiles - videoPath
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Launch compatibility checks for video files in current directory
+            for (fileItem in items.filter { it.isFile }) {
+                launch {
+                    if (fileItem.path in compatibilityCache.value) return@launch
+                    val uri = Uri.fromFile(File(fileItem.path))
+                    val result = videoCompatibilityChecker.checkCompatibility(uri)
+                    val updated = compatibilityCache.value.toMutableMap()
+                    updated[fileItem.path] = result
+                    compatibilityCache.value = updated
+                    // Auto-deselect unsupported files
+                    if (!result.isFullySupported) {
+                        selectedFiles = selectedFiles - fileItem.path
+                    }
                 }
             }
         } catch (e: SecurityException) {
@@ -191,14 +230,17 @@ fun FilePickerScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = {
-                // Select all: all folders and all video files in current directory
+                // Select all: only supported videos
                 coroutineScope.launch {
                     val allPaths = mutableSetOf<String>()
                     allPaths.addAll(selectedFiles)
                     for (folder in directoryItems.filter { it.isDirectory }) {
                         val cached = folderVideoPaths.value[folder.path]
                         if (cached != null) {
-                            allPaths.addAll(cached)
+                            // Only add supported (or not-yet-checked) videos
+                            allPaths.addAll(cached.filter { path ->
+                                compatibilityCache.value[path]?.isFullySupported != false
+                            })
                         } else {
                             val videos = withContext(Dispatchers.IO) {
                                 findVideosRecursively(File(folder.path))
@@ -207,7 +249,10 @@ fun FilePickerScreen(
                         }
                     }
                     for (file in directoryItems.filter { it.isFile }) {
-                        allPaths.add(file.path)
+                        // Only add if not known to be unsupported
+                        if (compatibilityCache.value[file.path]?.isFullySupported != false) {
+                            allPaths.add(file.path)
+                        }
                     }
                     selectedFiles = allPaths.toSet()
                 }
@@ -279,26 +324,37 @@ fun FilePickerScreen(
             ) {
                 val folders = directoryItems.filter { it.isDirectory }
                 val files = directoryItems.filter { it.isFile }
+                val cache = compatibilityCache.value
 
                 // Folders first
                 items(items = folders, key = { it.path }) { item ->
                     val cachedPaths = folderVideoPaths.value[item.path]
                     val videoCount = cachedPaths?.size
+
+                    // Compute supported video count for this folder
+                    val allChecked = cachedPaths != null &&
+                            cachedPaths.all { it in cache }
+                    val supportedPaths = cachedPaths?.filter { path ->
+                        cache[path]?.isFullySupported == true
+                    } ?: emptyList()
+                    val supportedVideoCount = if (allChecked) supportedPaths.size else null
+
                     val selectedCount = if (cachedPaths != null) {
                         cachedPaths.count { it in selectedFiles }
                     } else 0
 
                     val toggleableState = when {
                         cachedPaths == null -> ToggleableState.Off
-                        cachedPaths.isEmpty() -> ToggleableState.Off
+                        supportedPaths.isEmpty() && allChecked -> ToggleableState.Off
                         selectedCount == 0 -> ToggleableState.Off
-                        selectedCount == cachedPaths.size -> ToggleableState.On
+                        selectedCount >= supportedPaths.size && supportedPaths.isNotEmpty() -> ToggleableState.On
                         else -> ToggleableState.Indeterminate
                     }
 
                     FolderItem(
                         item = item,
                         videoCount = videoCount,
+                        supportedVideoCount = supportedVideoCount,
                         selectedCount = selectedCount,
                         toggleableState = toggleableState,
                         onSelect = {
@@ -308,8 +364,11 @@ fun FilePickerScreen(
                                     // Deselect all videos in this folder
                                     selectedFiles = selectedFiles - paths.toSet()
                                 } else {
-                                    // Select all videos in this folder
-                                    selectedFiles = selectedFiles + paths
+                                    // Select only supported (or not-yet-checked) videos
+                                    val selectable = paths.filter { path ->
+                                        cache[path]?.isFullySupported != false
+                                    }
+                                    selectedFiles = selectedFiles + selectable
                                 }
                             } else {
                                 // Still loading — find videos asynchronously
@@ -331,9 +390,13 @@ fun FilePickerScreen(
 
                 // Video files
                 items(items = files, key = { it.path }) { item ->
+                    val compatResult = cache[item.path]
+                    val isSupported = compatResult?.isFullySupported
+
                     VideoFileItem(
                         item = item,
                         isSelected = item.path in selectedFiles,
+                        isSupported = isSupported,
                         onSelect = {
                             if (item.path in selectedFiles) {
                                 selectedFiles = selectedFiles - item.path
@@ -347,9 +410,14 @@ fun FilePickerScreen(
         }
 
         // Bottom bar with selection info and action buttons
-        // Compute selected folder count: folders where all videos are selected
+        // Compute selected folder count: folders where all supported videos are selected
         val selectedFolderCount = folderVideoPaths.value.count { (_, paths) ->
-            paths != null && paths.isNotEmpty() && paths.all { it in selectedFiles }
+            if (paths == null || paths.isEmpty()) false else {
+                val supported = paths.filter {
+                    compatibilityCache.value[it]?.isFullySupported == true
+                }
+                supported.isNotEmpty() && supported.all { it in selectedFiles }
+            }
         }
 
         FilePickerBottomBar(
@@ -357,7 +425,11 @@ fun FilePickerScreen(
             selectedFolderCount = selectedFolderCount,
             onConfirm = {
                 coroutineScope.launch {
-                    val uris = selectedFiles.map { path ->
+                    // Filter to only supported files as a safety net
+                    val supportedPaths = selectedFiles.filter { path ->
+                        compatibilityCache.value[path]?.isFullySupported == true
+                    }
+                    val uris = supportedPaths.map { path ->
                         File(path).toURI().toString()
                     }
                     if (uris.isNotEmpty()) {
