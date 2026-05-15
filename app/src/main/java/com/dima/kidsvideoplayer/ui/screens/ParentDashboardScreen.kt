@@ -39,7 +39,8 @@ sealed interface VideoListEntry {
     data class FolderHeader(
         val folderName: String,   // e.g. "Movies" or "Anime"
         val folderPath: String,   // full path for identification
-        val depth: Int            // 0 = top-level, 1 = subfolder, etc.
+        val depth: Int,           // 0 = top-level, 1 = subfolder, etc.
+        val isExpanded: Boolean   // whether the folder is expanded or collapsed
     ) : VideoListEntry
 
     data class VideoEntry(
@@ -142,8 +143,9 @@ private fun abbreviateFolderPath(fullPath: String): String {
 
 /**
  * Group video URIs by their folders and create VideoListEntry items.
+ * @param expandedFolders Set of folder paths that are currently expanded
  */
-private fun groupVideosByFolder(uris: List<String>): List<VideoListEntry> {
+private fun groupVideosByFolder(uris: List<String>, expandedFolders: Set<String> = emptySet()): List<VideoListEntry> {
     if (uris.isEmpty()) return emptyList()
 
     // 1. Extract folder info for each URI
@@ -182,26 +184,31 @@ private fun groupVideosByFolder(uris: List<String>): List<VideoListEntry> {
         sortedFolderPaths.forEach { folderPath ->
             val depth = folderDepths[folderPath] ?: 0
             val folderName = extractFolderName(folderPath)
+            val isExpanded = expandedFolders.contains(folderPath)
+            
             result.add(VideoListEntry.FolderHeader(
                 folderName = folderName,
                 folderPath = folderPath,
-                depth = depth
+                depth = depth,
+                isExpanded = isExpanded
             ))
             
-            // Add videos in this folder
-            folderMap[folderPath]?.forEach { (_, fileName) ->
-                // Find the original URI that matches this folder and filename
-                val matchingUri = uris.find { uri ->
-                    val (extractedFolder, extractedFileName) = extractFolderInfo(uri) ?: Pair("", "")
-                    extractedFolder == folderPath && extractedFileName == fileName
-                }
-                if (matchingUri != null) {
-                    val originalIndex = uris.indexOf(matchingUri)
-                    result.add(VideoListEntry.VideoEntry(
-                        uriString = matchingUri,
-                        fileName = fileName,
-                        originalIndex = originalIndex
-                    ))
+            // Add videos in this folder only if it's expanded
+            if (isExpanded) {
+                folderMap[folderPath]?.forEach { (_, fileName) ->
+                    // Find the original URI that matches this folder and filename
+                    val matchingUri = uris.find { uri ->
+                        val (extractedFolder, extractedFileName) = extractFolderInfo(uri) ?: Pair("", "")
+                        extractedFolder == folderPath && extractedFileName == fileName
+                    }
+                    if (matchingUri != null) {
+                        val originalIndex = uris.indexOf(matchingUri)
+                        result.add(VideoListEntry.VideoEntry(
+                            uriString = matchingUri,
+                            fileName = fileName,
+                            originalIndex = originalIndex
+                        ))
+                    }
                 }
             }
         }
@@ -211,7 +218,8 @@ private fun groupVideosByFolder(uris: List<String>): List<VideoListEntry> {
         result.add(VideoListEntry.FolderHeader(
             folderName = "Другие",
             folderPath = "other",
-            depth = 0
+            depth = 0,
+            isExpanded = true  // По умолчанию развернута
         ))
         ungroupedFiles.forEachIndexed { _, (uriString, fileName) ->
             val originalIndex = uris.indexOf(uriString)
@@ -285,6 +293,7 @@ fun ParentDashboardScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
+    val expandedFolders by videoRepository.expandedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
 
     // Exit confirmation dialog state
     var showExitDialog by remember { mutableStateOf(false) }
@@ -435,7 +444,9 @@ fun ParentDashboardScreen(
                             .weight(1f)
                     ) {
                         // Transform flat URI list into grouped entries
-                        val groupedEntries = remember { groupVideosByFolder(videoUris) }
+                        val groupedEntries = remember(videoUris, expandedFolders) {
+                            groupVideosByFolder(videoUris, expandedFolders)
+                        }
 
                         LazyColumn(
                             state = videoListState,
@@ -446,7 +457,17 @@ fun ParentDashboardScreen(
                                 when (entry) {
                                     is VideoListEntry.FolderHeader -> FolderHeaderItem(
                                         folderName = entry.folderName,
-                                        depth = entry.depth
+                                        isExpanded = entry.isExpanded,
+                                        onToggle = {
+                                            val updatedFolders = if (entry.isExpanded) {
+                                                expandedFolders - entry.folderPath
+                                            } else {
+                                                expandedFolders + entry.folderPath
+                                            }
+                                            coroutineScope.launch {
+                                                videoRepository.saveExpandedFolders(updatedFolders)
+                                            }
+                                        }
                                     )
                                     is VideoListEntry.VideoEntry -> VideoListItem(
                                         index = entry.originalIndex,
@@ -522,15 +543,25 @@ fun ParentDashboardScreen(
 @Composable
 private fun FolderHeaderItem(
     folderName: String,
-    depth: Int
+    isExpanded: Boolean,
+    onToggle: () -> Unit
 ) {
-    val indent = (depth * 16).dp  // 16dp per nesting level
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = indent + 12.dp, top = 4.dp, bottom = 2.dp),
+            .clickable { onToggle() }
+            .padding(start = 12.dp, top = 4.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Toggle icon
+        Text(
+            text = if (isExpanded) "▼" else "▶",
+            fontSize = 12.sp,
+            color = FolderBlue,
+            modifier = Modifier.padding(end = 4.dp)
+        )
+        
+        // Folder icon and name
         Text(
             text = "📁 $folderName",
             fontSize = 13.sp,

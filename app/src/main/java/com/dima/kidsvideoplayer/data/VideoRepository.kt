@@ -29,6 +29,7 @@ class VideoRepository(private val context: Context) {
 
     companion object {
         private val VIDEO_URIS_KEY = stringPreferencesKey("video_uris")
+        private val EXPANDED_FOLDERS_KEY = stringPreferencesKey("expanded_folders")
         private const val LEGACY_SEPARATOR = "|"
     }
 
@@ -63,6 +64,18 @@ class VideoRepository(private val context: Context) {
     val videoUris: Flow<List<String>> = context.dataStore.data.map { prefs ->
         val raw = prefs[VIDEO_URIS_KEY] ?: ""
         deserialize(raw)
+    }
+
+    /**
+     * Get the set of expanded folder paths as a Flow.
+     */
+    val expandedFolders: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[EXPANDED_FOLDERS_KEY] ?: ""
+        if (raw.isBlank()) {
+            emptySet()
+        } else {
+            raw.split(",").toSet()
+        }
     }
 
     /**
@@ -112,6 +125,15 @@ class VideoRepository(private val context: Context) {
     suspend fun clearAll() {
         context.dataStore.edit { prefs ->
             prefs.remove(VIDEO_URIS_KEY)
+        }
+    }
+
+    /**
+     * Save the set of expanded folder paths.
+     */
+    suspend fun saveExpandedFolders(folders: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[EXPANDED_FOLDERS_KEY] = folders.joinToString(",")
         }
     }
 }
