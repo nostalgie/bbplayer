@@ -46,7 +46,6 @@ fun AppNavHost(
                         popUpTo(Routes.KID_PLAYER) { inclusive = false }
                     }
                 },
-                onExitKidMode = { appState.exitKidMode() },
                 isLockTaskActive = appState.isLockTaskActive,
                 pendingStartVideoIndex = appState.pendingStartVideoIndex
             )

@@ -55,7 +55,6 @@ fun KidPlayerScreen(
     videoRepository: VideoRepository,
     videoPlayerManager: VideoPlayerManager,
     onSecretDoorActivated: () -> Unit,
-    onExitKidMode: () -> Unit,
     isLockTaskActive: Boolean,
     pendingStartVideoIndex: Int = -1
 ) {
@@ -359,7 +358,6 @@ fun KidPlayerScreen(
             onDismiss = { showPinDialog = false },
             onPinCorrect = {
                 showPinDialog = false
-                onExitKidMode()
                 onSecretDoorActivated()
             }
         )
