@@ -7,7 +7,6 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.util.Log
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
-import com.dima.kidsvideoplayer.ui.screens.filepicker.isVideoFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -139,36 +138,15 @@ class VideoCompatibilityChecker(private val context: Context) {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check compatibility for $uri", e)
-
-                // MediaExtractor doesn't support certain container formats (AVI, FLV, etc.)
-                // but ExoPlayer has its own extractors (AviExtractor, etc.) that can handle them.
-                // If the file has a known video extension, return an optimistic result so the
-                // user can add it — ExoPlayer will try its best at playback time.
-                val fileName = uri.lastPathSegment ?: uri.path ?: ""
-                if (isVideoFile(fileName)) {
-                    Log.i(TAG, "MediaExtractor failed for known video format, " +
-                        "allowing optimistically for ExoPlayer: $fileName")
-                    CompatibilityResult(
-                        isFullySupported = true,
-                        videoCodec = null,
-                        audioCodec = null,
-                        videoSupported = true,
-                        audioSupported = true,
-                        warnings = listOf("Контейнер не поддерживается MediaExtractor, " +
-                            "ExoPlayer попытается воспроизвести"),
-                        canReadFile = true
-                    )
-                } else {
-                    CompatibilityResult(
-                        isFullySupported = false,
-                        videoCodec = null,
-                        audioCodec = null,
-                        videoSupported = false,
-                        audioSupported = false,
-                        warnings = listOf("Could not analyze file: ${e.message}"),
-                        canReadFile = false
-                    )
-                }
+                CompatibilityResult(
+                    isFullySupported = false,
+                    videoCodec = null,
+                    audioCodec = null,
+                    videoSupported = false,
+                    audioSupported = false,
+                    warnings = listOf("Could not analyze file: ${e.message}"),
+                    canReadFile = false
+                )
             } finally {
                 try {
                     extractor.release()

@@ -174,13 +174,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegGetChannelCount, jlong context) {
     LOGE("Context must be non-NULL.");
     return -1;
   }
-  AVCodecContext *ctx = (AVCodecContext *)context;
-  int inChannels = ctx->ch_layout.nb_channels;
-  // When downmixing multi-channel to stereo, report stereo (2) output.
-  if (inChannels > 2 && ctx->opaque != NULL) {
-    return 2;
-  }
-  return inChannels;
+  return ((AVCodecContext *)context)->ch_layout.nb_channels;
 }
 
 AUDIO_DECODER_FUNC(jint, ffmpegGetSampleRate, jlong context) {
@@ -275,14 +269,15 @@ AVCodecContext *createContext(JNIEnv *env, const AVCodec *codec,
 int decodePacket(AVCodecContext *context, AVPacket *packet,
                  uint8_t *outputBuffer, int outputSize) {
   int result = 0;
+<<<<<<< HEAD
   // Queue input data. If the decoder still has buffered frames from a
   // previous call (EAGAIN), we skip sending and go straight to draining
-  // the remaining output — this is normal for multi-channel codecs like
-  // AC3 that produce several frames per input packet.
+  // the remaining output.
+=======
+  // Queue input data.
+>>>>>>> parent of c46c03a (Draft for fix avi)
   result = avcodec_send_packet(context, packet);
-  if (result && result != AVERROR(EAGAIN)) {
-    LOGE("avcodec_send_packet failed: inputSize=%d, codec=%s",
-         packet->size, context->codec->name);
+  if (result) {
     logError("avcodec_send_packet", result);
     return transformError(result);
   }
@@ -310,18 +305,12 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
     int channelCount = context->ch_layout.nb_channels;
     int sampleRate = context->sample_rate;
     int sampleCount = frame->nb_samples;
-    int dataSize = av_samples_get_buffer_size(NULL, channelCount, sampleCount,
-                                              sampleFormat, 1);
-    LOGE("decodePacket: codec=%s, sampleFmt=%d, ch=%d, rate=%d, "
-         "samples=%d, dataSize=%d, requestFmt=%d",
-         context->codec->name, (int)sampleFormat, channelCount, sampleRate,
-         sampleCount, dataSize, (int)context->request_sample_fmt);
+<<<<<<< HEAD
 
     SwrContext *resampleContext = static_cast<SwrContext *>(context->opaque);
     if (!resampleContext) {
       // For multi-channel audio (>2ch), downmix to stereo.
-      // Android's AudioTrack often cannot handle 5.1/6-channel PCM output,
-      // causing the player to get stuck buffering.
+      // Android's AudioTrack often cannot handle 5.1/6-channel PCM output.
       AVChannelLayout outLayout;
       if (channelCount > 2) {
         av_channel_layout_default(&outLayout, 2);  // stereo downmix
@@ -330,71 +319,100 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
       } else {
         av_channel_layout_copy(&outLayout, &context->ch_layout);
       }
+
+      // Some codecs (AC3) may leave ch_layout as AV_CHANNEL_ORDER_UNSPEC.
+      // swr_alloc_set_opts2 requires a defined layout — build one from
+      // nb_channels as a fallback.
+      AVChannelLayout inLayout;
+      if (context->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC
+          && channelCount > 0) {
+        av_channel_layout_default(&inLayout, channelCount);
+      } else {
+        av_channel_layout_copy(&inLayout, &context->ch_layout);
+      }
+
       result =
           swr_alloc_set_opts2(&resampleContext,             // ps
-                              &outLayout,                   // out_ch_layout (stereo)
+                              &outLayout,                   // out_ch_layout
+=======
+    int dataSize = av_samples_get_buffer_size(NULL, channelCount, sampleCount,
+                                              sampleFormat, 1);
+    SwrContext *resampleContext = static_cast<SwrContext *>(context->opaque);
+    if (!resampleContext) {
+      result =
+          swr_alloc_set_opts2(&resampleContext,             // ps
+                              &context->ch_layout,          // out_ch_layout
+>>>>>>> parent of c46c03a (Draft for fix avi)
                               context->request_sample_fmt,  // out_sample_fmt
                               sampleRate,                   // out_sample_rate
-                              &context->ch_layout,          // in_ch_layout
+                              &inLayout,                    // in_ch_layout
                               sampleFormat,                 // in_sample_fmt
                               sampleRate,                   // in_sample_rate
                               0,                            // log_offset
                               NULL                          // log_ctx
           );
       if (result < 0) {
-        LOGE("swr_alloc_set_opts2 failed for codec=%s, ch=%d, rate=%d",
-             context->codec->name, channelCount, sampleRate);
         logError("swr_alloc_set_opts2", result);
         av_frame_free(&frame);
         return transformError(result);
       }
       result = swr_init(resampleContext);
       if (result < 0) {
-        LOGE("swr_init failed for codec=%s", context->codec->name);
         logError("swr_init", result);
         av_frame_free(&frame);
         return transformError(result);
       }
       context->opaque = resampleContext;
-      LOGE("swresample context created successfully for codec=%s",
-           context->codec->name);
     }
-    int inSampleSize = av_get_bytes_per_sample(sampleFormat);
+
     int outSampleSize = av_get_bytes_per_sample(context->request_sample_fmt);
-    // Use the resampler's output channel count (may differ from input
-    // when downmixing multi-channel audio to stereo).
-    int outChannelCount = swr_get_out_samples(resampleContext, 0)
-                          > 0 ? 2 : channelCount;  // simplified: downmix = 2ch
-    if (channelCount > 2) outChannelCount = 2;
-    else outChannelCount = channelCount;
+<<<<<<< HEAD
+    int outChannelCount = (channelCount > 2) ? 2 : channelCount;
+
+    // swr_get_out_samples can return -1 before the first conversion; fall
+    // back to sampleCount (same sample-rate ⇒ same number of samples).
     int outSamples = swr_get_out_samples(resampleContext, sampleCount);
-    int bufferOutSize = outSampleSize * outChannelCount * outSamples;
-    LOGE("decodePacket buffer: outSampleSize=%d, outSamples=%d, "
-         "bufferOutSize=%d, outputSize=%d, outSize=%d",
-         outSampleSize, outSamples, bufferOutSize, outputSize, outSize);
+    if (outSamples <= 0) {
+      outSamples = sampleCount;
+    }
+
+    // Byte size required for this frame's output.
+    int bufferOutBytes = outSampleSize * outChannelCount * outSamples;
+    if (outSize + bufferOutBytes > outputSize) {
+=======
+    int outSamples = swr_get_out_samples(resampleContext, sampleCount);
+    int bufferOutSize = outSampleSize * channelCount * outSamples;
     if (outSize + bufferOutSize > outputSize) {
+>>>>>>> parent of c46c03a (Draft for fix avi)
       LOGE("Output buffer size (%d) too small for output data (%d).",
-           outputSize, outSize + bufferOutSize);
+           outputSize, outSize + bufferOutBytes);
       av_frame_free(&frame);
       return AUDIO_DECODER_ERROR_INVALID_DATA;
     }
-    result = swr_convert(resampleContext, &outputBuffer, bufferOutSize,
-                         (const uint8_t **)frame->data, frame->nb_samples);
+
+    // IMPORTANT: swr_convert's 3rd parameter is the max number of output
+    // samples *per channel*, NOT bytes.
+    result = swr_convert(resampleContext,
+                         &outputBuffer,
+                         outSamples,                        // samples per channel
+                         (const uint8_t **)frame->data,
+                         frame->nb_samples);
     av_frame_free(&frame);
     if (result < 0) {
-      LOGE("swr_convert failed for codec=%s, bufferOutSize=%d",
-           context->codec->name, bufferOutSize);
+<<<<<<< HEAD
+      LOGE("swr_convert failed for codec=%s", context->codec->name);
+=======
+>>>>>>> parent of c46c03a (Draft for fix avi)
       logError("swr_convert", result);
       return AUDIO_DECODER_ERROR_INVALID_DATA;
     }
-    int available = swr_get_out_samples(resampleContext, 0);
-    if (available != 0) {
-      LOGE("Expected no samples remaining after resampling, but found %d.",
-           available);
-      return AUDIO_DECODER_ERROR_INVALID_DATA;
-    }
-    outputBuffer += bufferOutSize;
-    outSize += bufferOutSize;
+
+    // Advance the write pointer by the actual number of bytes produced.
+    int actualBytes = result * outChannelCount * outSampleSize;
+    outputBuffer += actualBytes;
+    outSize += actualBytes;
+    // NOTE: do NOT check swr_get_out_samples() here — the resampler
+    // legitimately buffers samples internally during downmix.
   }
   return outSize;
 }
