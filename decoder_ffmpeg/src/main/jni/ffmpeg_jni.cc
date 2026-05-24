@@ -40,8 +40,8 @@ extern "C" {
   extern "C" {                                                                 \
   JNIEXPORT RETURN_TYPE                                                        \
       Java_androidx_media3_decoder_ffmpeg_FfmpegLibrary_##NAME(JNIEnv *env,    \
-                                                               jobject thiz,   \
-                                                               ##__VA_ARGS__); \
+                                                                jobject thiz,   \
+                                                                ##__VA_ARGS__); \
   }                                                                            \
   JNIEXPORT RETURN_TYPE                                                        \
       Java_androidx_media3_decoder_ffmpeg_FfmpegLibrary_##NAME(                \
@@ -174,7 +174,13 @@ AUDIO_DECODER_FUNC(jint, ffmpegGetChannelCount, jlong context) {
     LOGE("Context must be non-NULL.");
     return -1;
   }
-  return ((AVCodecContext *)context)->ch_layout.nb_channels;
+  AVCodecContext *ctx = (AVCodecContext *)context;
+  int inChannels = ctx->ch_layout.nb_channels;
+  // When downmixing multi-channel to stereo, report stereo (2) output.
+  if (inChannels > 2 && ctx->opaque != NULL) {
+    return 2;
+  }
+  return inChannels;
 }
 
 AUDIO_DECODER_FUNC(jint, ffmpegGetSampleRate, jlong context) {
@@ -269,15 +275,13 @@ AVCodecContext *createContext(JNIEnv *env, const AVCodec *codec,
 int decodePacket(AVCodecContext *context, AVPacket *packet,
                  uint8_t *outputBuffer, int outputSize) {
   int result = 0;
-<<<<<<< HEAD
   // Queue input data. If the decoder still has buffered frames from a
   // previous call (EAGAIN), we skip sending and go straight to draining
   // the remaining output.
-=======
-  // Queue input data.
->>>>>>> parent of c46c03a (Draft for fix avi)
   result = avcodec_send_packet(context, packet);
-  if (result) {
+  if (result && result != AVERROR(EAGAIN)) {
+    LOGE("avcodec_send_packet failed: inputSize=%d, codec=%s",
+         packet->size, context->codec->name);
     logError("avcodec_send_packet", result);
     return transformError(result);
   }
@@ -305,7 +309,6 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
     int channelCount = context->ch_layout.nb_channels;
     int sampleRate = context->sample_rate;
     int sampleCount = frame->nb_samples;
-<<<<<<< HEAD
 
     SwrContext *resampleContext = static_cast<SwrContext *>(context->opaque);
     if (!resampleContext) {
@@ -321,7 +324,7 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
       }
 
       // Some codecs (AC3) may leave ch_layout as AV_CHANNEL_ORDER_UNSPEC.
-      // swr_alloc_set_opts2 requires a defined layout — build one from
+      // swr_alloc_set_opts2 requires a defined layout - build one from
       // nb_channels as a fallback.
       AVChannelLayout inLayout;
       if (context->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC
@@ -334,15 +337,6 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
       result =
           swr_alloc_set_opts2(&resampleContext,             // ps
                               &outLayout,                   // out_ch_layout
-=======
-    int dataSize = av_samples_get_buffer_size(NULL, channelCount, sampleCount,
-                                              sampleFormat, 1);
-    SwrContext *resampleContext = static_cast<SwrContext *>(context->opaque);
-    if (!resampleContext) {
-      result =
-          swr_alloc_set_opts2(&resampleContext,             // ps
-                              &context->ch_layout,          // out_ch_layout
->>>>>>> parent of c46c03a (Draft for fix avi)
                               context->request_sample_fmt,  // out_sample_fmt
                               sampleRate,                   // out_sample_rate
                               &inLayout,                    // in_ch_layout
@@ -352,12 +346,15 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
                               NULL                          // log_ctx
           );
       if (result < 0) {
+        LOGE("swr_alloc_set_opts2 failed for codec=%s, ch=%d, rate=%d",
+             context->codec->name, channelCount, sampleRate);
         logError("swr_alloc_set_opts2", result);
         av_frame_free(&frame);
         return transformError(result);
       }
       result = swr_init(resampleContext);
       if (result < 0) {
+        LOGE("swr_init failed for codec=%s", context->codec->name);
         logError("swr_init", result);
         av_frame_free(&frame);
         return transformError(result);
@@ -366,11 +363,10 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
     }
 
     int outSampleSize = av_get_bytes_per_sample(context->request_sample_fmt);
-<<<<<<< HEAD
     int outChannelCount = (channelCount > 2) ? 2 : channelCount;
 
     // swr_get_out_samples can return -1 before the first conversion; fall
-    // back to sampleCount (same sample-rate ⇒ same number of samples).
+    // back to sampleCount (same sample-rate => same number of samples).
     int outSamples = swr_get_out_samples(resampleContext, sampleCount);
     if (outSamples <= 0) {
       outSamples = sampleCount;
@@ -379,11 +375,6 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
     // Byte size required for this frame's output.
     int bufferOutBytes = outSampleSize * outChannelCount * outSamples;
     if (outSize + bufferOutBytes > outputSize) {
-=======
-    int outSamples = swr_get_out_samples(resampleContext, sampleCount);
-    int bufferOutSize = outSampleSize * channelCount * outSamples;
-    if (outSize + bufferOutSize > outputSize) {
->>>>>>> parent of c46c03a (Draft for fix avi)
       LOGE("Output buffer size (%d) too small for output data (%d).",
            outputSize, outSize + bufferOutBytes);
       av_frame_free(&frame);
@@ -399,10 +390,7 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
                          frame->nb_samples);
     av_frame_free(&frame);
     if (result < 0) {
-<<<<<<< HEAD
       LOGE("swr_convert failed for codec=%s", context->codec->name);
-=======
->>>>>>> parent of c46c03a (Draft for fix avi)
       logError("swr_convert", result);
       return AUDIO_DECODER_ERROR_INVALID_DATA;
     }
@@ -411,7 +399,7 @@ int decodePacket(AVCodecContext *context, AVPacket *packet,
     int actualBytes = result * outChannelCount * outSampleSize;
     outputBuffer += actualBytes;
     outSize += actualBytes;
-    // NOTE: do NOT check swr_get_out_samples() here — the resampler
+    // NOTE: do NOT check swr_get_out_samples() here - the resampler
     // legitimately buffers samples internally during downmix.
   }
   return outSize;
