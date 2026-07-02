@@ -10,19 +10,19 @@ import java.io.File
 import java.net.URI
 
 /**
- * Helper class for handling Huawei-specific storage access restrictions.
- * Huawei devices often require additional permissions and settings to access SD cards.
+ * Helper class for handling Huawei/Honor-specific storage access restrictions.
+ * Huawei and Honor devices often require additional permissions and settings to access SD cards.
  */
 object HuaweiStorageHelper {
     
     private const val TAG = "HuaweiStorageHelper"
     
     /**
-     * Check if the device is a Huawei device.
+     * Check if the device is a Huawei or Honor device.
      */
     fun isHuaweiDevice(): Boolean {
         val manufacturer = Build.MANUFACTURER.lowercase()
-        return manufacturer.contains("huawei")
+        return manufacturer.contains("huawei") || manufacturer.contains("honor")
     }
     
     /**
