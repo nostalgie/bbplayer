@@ -51,6 +51,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideSystemUI()
 
+        // Apply kiosk device policies if we are Device Owner
+        // (disable status bar, set as HOME launcher, disable keyguard, etc.)
+        if (lockTaskManager.isDeviceOwner()) {
+            lockTaskManager.applyKioskPolicies()
+        }
+
         // Set up Compose content
         setContent {
             KidsVideoPlayerTheme {
@@ -94,6 +100,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         )
+
+        // Auto-start kiosk mode on every launch.
+        // - If Device Owner: fully automatic, no user interaction needed
+        // - If NOT Device Owner: uses screen pinning (user must confirm once)
+        //   Requires "Screen pinning" enabled in Settings → Security
+        if (!lockTaskManager.isLockTaskRunning()) {
+            Log.d(TAG, "Auto-starting kiosk mode (isDeviceOwner=${lockTaskManager.isDeviceOwner()})")
+            enterKidMode()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -111,12 +126,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Only hide system UI when in kiosk/lock-task mode
+        // Always hide system UI
+        hideSystemUI()
+
+        // If in kiosk mode, ensure lock task is still active and resume playback
         if (isLockTaskActive.value) {
-            hideSystemUI()
-        }
-        // Only auto-play when in kiosk mode (kid player screen is active)
-        if (isLockTaskActive.value) {
+            if (!lockTaskManager.isLockTaskRunning() && lockTaskManager.isDeviceOwner()) {
+                Log.d(TAG, "Re-starting kiosk mode in onResume (was lost)")
+                lockTaskManager.startKioskMode(this)
+            }
             videoPlayerManager.player?.play()
         }
     }
@@ -164,6 +182,8 @@ class MainActivity : ComponentActivity() {
     private fun exitApp() {
         Log.d(TAG, "Exiting app from Parent Dashboard")
         exitKidMode()
+        // Remove kiosk policies so device returns to normal
+        lockTaskManager.removeKioskPolicies()
         finishAffinity()
     }
 

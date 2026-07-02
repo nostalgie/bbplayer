@@ -2,5 +2,8 @@
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-policies>
         <force-lock />
+        <disable-keyguard-features />
+        <reset-password />
+        <wipe-data />
     </uses-policies>
 </device-admin>
