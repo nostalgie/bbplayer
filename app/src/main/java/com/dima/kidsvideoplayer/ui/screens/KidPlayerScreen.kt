@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -36,7 +38,6 @@ import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.components.BounceButton
-import com.dima.kidsvideoplayer.ui.components.PinDialog
 import com.dima.kidsvideoplayer.ui.components.SeekButton
 import com.dima.kidsvideoplayer.ui.theme.BlueButton
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
@@ -48,8 +49,7 @@ import kotlinx.coroutines.delay
  * Features:
  * - libVLC video playback via VLCVideoLayout
  * - Prev/Next bounce buttons at the bottom
- * - "v1.0" text in bottom-right corner — secret door (long press 1 second → PIN dialog)
- * - PIN dialog → if correct, navigates to Parent Dashboard
+ * - Settings gear in top-right corner — secret door (long press 3 seconds → Parent Dashboard)
  */
 @Composable
 fun KidPlayerScreen(
@@ -72,9 +72,6 @@ fun KidPlayerScreen(
             videoUris.filter { selectedVideos.contains(it) }
         }
     }
-
-    // PIN dialog state
-    var showPinDialog by remember { mutableStateOf(false) }
 
     // Track whether this is the first launch with videos (for restoring state)
     var hasRestoredState by remember { mutableStateOf(false) }
@@ -195,11 +192,8 @@ fun KidPlayerScreen(
         // ==============================
         if (filteredVideoUris.isNotEmpty()) {
             AndroidView(
-                factory = { ctx ->
-                    VLCVideoLayout(ctx).also { layout ->
-                        videoPlayerManager.attachVideoLayout(layout)
-                    }
-                },
+                factory = { ctx -> VLCVideoLayout(ctx) },
+                update = { layout -> videoPlayerManager.attachVideoLayout(layout) },
                 onRelease = { videoPlayerManager.detachVideoLayout() },
                 modifier = Modifier.fillMaxSize()
             )
@@ -251,7 +245,7 @@ fun KidPlayerScreen(
                     .pointerInput(controlsVisible, controlsInteraction, secretDoorTouchSizePx) {
                         detectTapGestures { offset ->
                             val inSecretZone = offset.x >= size.width - secretDoorTouchSizePx &&
-                                offset.y >= size.height - secretDoorTouchSizePx
+                                offset.y <= secretDoorTouchSizePx
                             if (!inSecretZone) {
                                 controlsVisible = !controlsVisible
                                 controlsInteraction++
@@ -392,62 +386,64 @@ fun KidPlayerScreen(
         }
 
         // ==============================
-        // Version Text — Secret Door (long press 1 second)
+        // Settings gear — Secret Door (long press 3 seconds)
         // ==============================
-        var isVersionPressed by remember { mutableStateOf(false) }
+        var isSettingsPressed by remember { mutableStateOf(false) }
+        var holdProgress by remember { mutableFloatStateOf(0f) }
 
-        // Separate timer: fires 1 second after press, cancels on release
-        LaunchedEffect(isVersionPressed) {
-            if (isVersionPressed) {
-                delay(1000L)
-                showPinDialog = true
-                isVersionPressed = false
+        LaunchedEffect(isSettingsPressed) {
+            if (!isSettingsPressed) {
+                holdProgress = 0f
+                return@LaunchedEffect
+            }
+            holdProgress = 0f
+            val steps = (SECRET_DOOR_HOLD_MS / HOLD_PROGRESS_STEP_MS).toInt()
+            repeat(steps) { step ->
+                delay(HOLD_PROGRESS_STEP_MS)
+                if (!isSettingsPressed) return@LaunchedEffect
+                holdProgress = (step + 1).toFloat() / steps
+            }
+            if (isSettingsPressed) {
+                onSecretDoorActivated()
+                isSettingsPressed = false
+                holdProgress = 0f
             }
         }
 
         Box(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 8.dp, bottom = 8.dp)
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 8.dp)
                 .size(SECRET_DOOR_TOUCH_SIZE)
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown()
-                        isVersionPressed = true
+                        isSettingsPressed = true
                         waitForUpOrCancellation()
-                        isVersionPressed = false
+                        isSettingsPressed = false
                     }
                 },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "v1.0",
-                fontSize = 18.sp,
-                color = if (isVersionPressed) {
-                    Color.White.copy(alpha = 0.7f)
-                } else {
-                    Color.White.copy(alpha = 0.25f)
-                },
-                fontWeight = FontWeight.Normal
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = Color.White.copy(
+                    alpha = if (isSettingsPressed) {
+                        0.4f + 0.5f * holdProgress
+                    } else {
+                        0.4f
+                    }
+                )
             )
         }
-    }
-
-    // ==============================
-    // PIN Dialog
-    // ==============================
-    if (showPinDialog) {
-        PinDialog(
-            onDismiss = { showPinDialog = false },
-            onPinCorrect = {
-                showPinDialog = false
-                onSecretDoorActivated()
-            }
-        )
     }
 }
 
 private const val TAG = "KidPlayerScreen"
 
-/** Touch target for the secret-door version label (bottom-right). */
+/** Touch target for the secret-door settings gear (top-right). */
 private val SECRET_DOOR_TOUCH_SIZE = 72.dp
+private const val SECRET_DOOR_HOLD_MS = 3000L
+private const val HOLD_PROGRESS_STEP_MS = 100L

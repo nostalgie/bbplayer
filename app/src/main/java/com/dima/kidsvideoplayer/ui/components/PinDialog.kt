@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -42,12 +43,14 @@ private const val LOCKOUT_DURATION_SECONDS = 30
  *
  * @param onDismiss Called when dialog is cancelled
  * @param onPinCorrect Called when correct PIN is entered
+ * @param title Dialog title shown above the PIN dots
  * @param correctPin The expected PIN code (default from [DEFAULT_PIN] constant)
  */
 @Composable
 fun PinDialog(
     onDismiss: () -> Unit,
     onPinCorrect: () -> Unit,
+    title: String = "Введите ПИН",
     correctPin: String = DEFAULT_PIN
 ) {
     var pin by remember { mutableStateOf("") }
@@ -83,10 +86,11 @@ fun PinDialog(
             ) {
                 // Title
                 Text(
-                    text = "🔒 Введите ПИН",
+                    text = title,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    textAlign = TextAlign.Center
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))

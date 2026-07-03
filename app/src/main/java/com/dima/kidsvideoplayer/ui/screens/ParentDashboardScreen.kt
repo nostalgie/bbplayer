@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.ui.components.BounceButton
+import com.dima.kidsvideoplayer.ui.components.PinDialog
 import com.dima.kidsvideoplayer.ui.components.VerticalScrollbar
 import com.dima.kidsvideoplayer.ui.theme.CardSurface
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
@@ -273,14 +274,19 @@ private fun extractFolderName(folderPath: String): String {
 private val BUTTON_SIZE = 120.dp
 private val BUTTON_HEIGHT = 60.dp
 
+private enum class PinAction {
+    EXIT,
+    ADD_VIDEOS
+}
+
 /**
  * Parent Dashboard Screen — manage videos and settings.
  *
  * Features:
- * - Add videos via file picker (folder or individual files)
+ * - Add videos via file picker (folder or individual files) — PIN protected
  * - List of added videos with ability to remove
  * - "Back to Kid Mode" button
- * - Exit button with confirmation
+ * - Exit button — PIN protected
  */
 @Composable
 fun ParentDashboardScreen(
@@ -296,8 +302,8 @@ fun ParentDashboardScreen(
     val expandedFolders by videoRepository.expandedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
     val selectedVideos by videoRepository.selectedVideos.collectAsStateWithLifecycle(initialValue = emptySet())
 
-    // Exit confirmation dialog state
-    var showExitDialog by remember { mutableStateOf(false) }
+    // PIN-protected action state
+    var pendingPinAction by remember { mutableStateOf<PinAction?>(null) }
     // Clear all confirmation dialog state
     var showClearAllDialog by remember { mutableStateOf(false) }
     // Play video confirmation dialog state
@@ -306,29 +312,23 @@ fun ParentDashboardScreen(
     // Video list scroll state
     val videoListState = rememberLazyListState()
 
-    if (showExitDialog) {
-        AlertDialog(
-            onDismissRequest = { showExitDialog = false },
-            title = {
-                Text(text = "Выход")
+    fun requestPin(action: PinAction) {
+        pendingPinAction = action
+    }
+
+    pendingPinAction?.let { action ->
+        PinDialog(
+            title = when (action) {
+                PinAction.EXIT -> "Введите ПИН для выхода"
+                PinAction.ADD_VIDEOS -> "Введите ПИН для добавления видео"
             },
-            text = {
-                Text(text = "Вы уверены?")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showExitDialog = false
-                        onExitApp()
-                    }
-                ) {
-                    Text("Да", color = ExitRed)
+            onDismiss = { pendingPinAction = null },
+            onPinCorrect = {
+                when (action) {
+                    PinAction.EXIT -> onExitApp()
+                    PinAction.ADD_VIDEOS -> onNavigateToFilePicker()
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
-                    Text("Нет")
-                }
+                pendingPinAction = null
             }
         )
     }
@@ -444,7 +444,7 @@ fun ParentDashboardScreen(
                             textAlign = TextAlign.Center,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier
-                                .clickable { onNavigateToFilePicker() }
+                                .clickable { requestPin(PinAction.ADD_VIDEOS) }
                                 .padding(16.dp)
                         )
                     }
@@ -532,7 +532,7 @@ fun ParentDashboardScreen(
 
                 BounceButton(
                     text = "Добавить",
-                    onClick = onNavigateToFilePicker,
+                    onClick = { requestPin(PinAction.ADD_VIDEOS) },
                     backgroundColor = FolderBlue,
                     textColor = Color.White,
                     width = BUTTON_SIZE,
@@ -553,7 +553,7 @@ fun ParentDashboardScreen(
 
                 BounceButton(
                     text = "Выйти",
-                    onClick = { showExitDialog = true },
+                    onClick = { requestPin(PinAction.EXIT) },
                     backgroundColor = ExitRed,
                     textColor = Color.White,
                     width = BUTTON_SIZE,

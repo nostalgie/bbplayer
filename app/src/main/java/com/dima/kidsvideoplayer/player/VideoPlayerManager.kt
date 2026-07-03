@@ -23,6 +23,7 @@ class VideoPlayerManager(
     private var libVlc: LibVLC? = null
     private var mediaPlayer: MediaPlayer? = null
     private var videoLayout: VLCVideoLayout? = null
+    private var attachedLayout: VLCVideoLayout? = null
 
     private var playlist: List<String> = emptyList()
     private var pendingStartPositionMs: Long = 0L
@@ -86,13 +87,26 @@ class VideoPlayerManager(
 
     fun attachVideoLayout(layout: VLCVideoLayout) {
         videoLayout = layout
-        mediaPlayer?.attachViews(layout, null, false, false)
-        if (hasPendingPlay && playlist.isNotEmpty()) {
-            playCurrent(pendingStartPositionMs)
+        if (attachedLayout === layout) return
+        val player = mediaPlayer ?: return
+        layout.post {
+            if (videoLayout !== layout) return@post
+            try {
+                player.detachViews()
+            } catch (_: Exception) {
+                // Not attached yet
+            }
+            player.attachViews(layout, null, false, false)
+            attachedLayout = layout
+            Log.d(TAG, "Video surface attached (${layout.width}x${layout.height})")
+            if (hasPendingPlay && playlist.isNotEmpty()) {
+                playCurrent(pendingStartPositionMs)
+            }
         }
     }
 
     fun detachVideoLayout() {
+        attachedLayout = null
         mediaPlayer?.detachViews()
         videoLayout = null
     }
@@ -169,6 +183,7 @@ class VideoPlayerManager(
 
     fun release() {
         detachVideoLayout()
+        attachedLayout = null
         mediaPlayer?.release()
         mediaPlayer = null
         libVlc?.release()
