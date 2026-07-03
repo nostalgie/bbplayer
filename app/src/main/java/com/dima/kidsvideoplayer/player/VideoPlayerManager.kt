@@ -111,6 +111,20 @@ class VideoPlayerManager(
         videoLayout = null
     }
 
+    /**
+     * Re-bind the video surface after the display was turned off.
+     * libVLC keeps playing audio but the old Surface is invalid; [attachVideoLayout]
+     * would skip re-attach when [attachedLayout] still references the same view.
+     */
+    fun refreshVideoSurface() {
+        val layout = videoLayout ?: return
+        attachedLayout = null
+        attachVideoLayout(layout)
+        if (layout.width > 0 && layout.height > 0) {
+            updateVideoSurfaceSize(layout.width, layout.height)
+        }
+    }
+
     /** Notify libVLC when the video surface size changes (e.g. screen rotation). */
     fun updateVideoSurfaceSize(width: Int, height: Int) {
         if (width <= 0 || height <= 0) return

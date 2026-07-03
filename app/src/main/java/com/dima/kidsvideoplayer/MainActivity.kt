@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemUI()
+        videoPlayerManager.refreshVideoSurface()
 
         if (appState?.isLockTaskActive == true) {
             if (!lockTaskManager.isLockTaskRunning()) {
