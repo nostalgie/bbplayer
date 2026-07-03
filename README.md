@@ -134,6 +134,9 @@ Long press "v1.0" (1 сек) → PinDialog → PIN "1234"
 
 **Требование:** Java 17
 
+Подробная пошаговая инструкция (подключение телефона, Ubuntu, киоск):  
+**[docs/PHONE_SETUP.md](docs/PHONE_SETUP.md)**
+
 ```bash
 ./gradlew assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
