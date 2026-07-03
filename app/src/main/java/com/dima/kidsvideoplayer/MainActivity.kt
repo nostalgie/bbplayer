@@ -1,6 +1,8 @@
 package com.dima.kidsvideoplayer
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -29,7 +31,8 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var lockTaskManager: LockTaskManager
     private lateinit var videoRepository: VideoRepository
-    private lateinit var videoPlayerManager: VideoPlayerManager
+    private val videoPlayerManager: VideoPlayerManager
+        get() = (application as KidsVideoApp).videoPlayerManager
     private lateinit var videoCompatibilityChecker: VideoCompatibilityChecker
     private lateinit var playbackStateRepository: PlaybackStateRepository
 
@@ -43,19 +46,22 @@ class MainActivity : ComponentActivity() {
         val appContext = applicationContext
         lockTaskManager = LockTaskManager(appContext)
         videoRepository = VideoRepository(appContext)
-        videoPlayerManager = VideoPlayerManager(appContext)
         videoCompatibilityChecker = VideoCompatibilityChecker(appContext)
         playbackStateRepository = PlaybackStateRepository(appContext)
+
+        requestVideoPermissionIfNeeded()
+
+        // Emergency: strip kiosk policies on launch (recover from crash/Smart Recovery loops).
+        if (lockTaskManager.isDeviceOwner()) {
+            lockTaskManager.removeKioskPolicies()
+        }
 
         // Full immersive mode — hide status bar and navigation bar
         enableEdgeToEdge()
         hideSystemUI()
 
-        // Apply kiosk device policies if we are Device Owner
-        // (disable status bar, set as HOME launcher, disable keyguard, etc.)
-        if (lockTaskManager.isDeviceOwner()) {
-            lockTaskManager.applyKioskPolicies()
-        }
+        // Apply kiosk device policies only when explicitly entering kid mode (not on cold start).
+        // (Policies are removed above on launch for recovery.)
 
         // Set up Compose content
         setContent {
@@ -101,14 +107,8 @@ class MainActivity : ComponentActivity() {
             }
         )
 
-        // Auto-start kiosk mode on every launch.
-        // - If Device Owner: fully automatic, no user interaction needed
-        // - If NOT Device Owner: uses screen pinning (user must confirm once)
-        //   Requires "Screen pinning" enabled in Settings → Security
-        if (!lockTaskManager.isLockTaskRunning()) {
-            Log.d(TAG, "Auto-starting kiosk mode (isDeviceOwner=${lockTaskManager.isDeviceOwner()})")
-            enterKidMode()
-        }
+        // Kiosk is entered via enterKidMode() from UI — not automatically on cold start,
+        // to avoid crash/relaunch loops when the app is also the HOME launcher.
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        videoPlayerManager.player?.pause()
+        videoPlayerManager.pause()
 
         // Save playback state when app goes to background
         savePlaybackState()
@@ -135,19 +135,15 @@ class MainActivity : ComponentActivity() {
                 Log.d(TAG, "Re-starting kiosk mode in onResume (was lost)")
                 lockTaskManager.startKioskMode(this)
             }
-            videoPlayerManager.player?.play()
+            videoPlayerManager.play()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Safety net: ensure kiosk mode is always released
-        try {
-            lockTaskManager.stopKioskMode(this)
-        } catch (e: Exception) {
-            Log.w(TAG, "Error stopping kiosk mode in onDestroy", e)
-        }
-        videoPlayerManager.release()
+        // Do NOT stop lock task or release the player here.
+        // As the HOME launcher in kiosk mode, onDestroy runs on every restart;
+        // releasing the player or stopping lock task causes a crash/relaunch loop.
     }
 
     // ==============================
@@ -160,6 +156,9 @@ class MainActivity : ComponentActivity() {
      */
     private fun enterKidMode() {
         Log.d(TAG, "Entering Kid Mode — starting Lock Task")
+        if (lockTaskManager.isDeviceOwner()) {
+            lockTaskManager.applyKioskPolicies()
+        }
         lockTaskManager.startKioskMode(this)
         isLockTaskActive.value = true
         hideSystemUI()
@@ -182,8 +181,8 @@ class MainActivity : ComponentActivity() {
     private fun exitApp() {
         Log.d(TAG, "Exiting app from Parent Dashboard")
         exitKidMode()
-        // Remove kiosk policies so device returns to normal
         lockTaskManager.removeKioskPolicies()
+        videoPlayerManager.release()
         finishAffinity()
     }
 
@@ -196,13 +195,8 @@ class MainActivity : ComponentActivity() {
      * Called from [onPause] to capture the most up-to-date position.
      */
     private fun savePlaybackState() {
-        val player = videoPlayerManager.player ?: return
-        val currentIndex = player.currentMediaItemIndex
-        if (currentIndex < 0 || currentIndex >= player.mediaItemCount) return
-
-        val mediaItem = player.getMediaItemAt(currentIndex)
-        val uri = mediaItem.localConfiguration?.uri?.toString() ?: return
-        val positionMs = player.currentPosition.coerceAtLeast(0L)
+        val uri = videoPlayerManager.getCurrentVideoUri() ?: return
+        val positionMs = videoPlayerManager.currentPosition
 
         playbackStateRepository.save(
             PlaybackStateRepository.PlaybackState(
@@ -225,6 +219,22 @@ class MainActivity : ComponentActivity() {
         windowInsetsController.systemBarsBehavior =
             WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         windowInsetsController.hide(android.view.WindowInsets.Type.systemBars())
+    }
+
+    private fun requestVideoPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_VIDEO)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(android.Manifest.permission.READ_MEDIA_VIDEO), 0)
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 0)
+            }
+        }
     }
 
     companion object {

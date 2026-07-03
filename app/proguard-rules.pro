@@ -4,7 +4,11 @@
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
 
-# FFmpeg extension native methods
+# libVLC
+-keep class org.videolan.** { *; }
+-dontwarn org.videolan.**
+
+# FFmpeg extension native methods (VideoCompatibilityChecker)
 -keep class androidx.media3.decoder.ffmpeg.** { *; }
 -dontwarn androidx.media3.decoder.ffmpeg.**
 

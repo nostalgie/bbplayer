@@ -1,6 +1,5 @@
 package com.dima.kidsvideoplayer.ui.screens
 
-import android.graphics.Rect
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -25,22 +24,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.zIndex
-import androidx.core.view.ViewCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.ui.PlayerView
+import org.videolan.libvlc.util.VLCVideoLayout
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
@@ -55,9 +46,9 @@ import kotlinx.coroutines.delay
  * Kid Player Screen — fullscreen video player with navigation buttons.
  *
  * Features:
- * - ExoPlayer video playback via PlayerView
+ * - libVLC video playback via VLCVideoLayout
  * - Prev/Next bounce buttons at the bottom
- * - "v1.0" text in top-right corner — secret door (long press 1 second → PIN dialog)
+ * - "v1.0" text in bottom-right corner — secret door (long press 1 second → PIN dialog)
  * - PIN dialog → if correct, navigates to Parent Dashboard
  */
 @Composable
@@ -69,8 +60,6 @@ fun KidPlayerScreen(
     isLockTaskActive: Boolean,
     pendingStartVideoIndex: Int = -1
 ) {
-    val context = LocalContext.current
-    val rootView = LocalView.current
     val secretDoorTouchSizePx = with(LocalDensity.current) { SECRET_DOOR_TOUCH_SIZE.toPx() }
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
     val selectedVideos by videoRepository.selectedVideos.collectAsStateWithLifecycle(initialValue = emptySet())
@@ -90,8 +79,10 @@ fun KidPlayerScreen(
     // Track whether this is the first launch with videos (for restoring state)
     var hasRestoredState by remember { mutableStateOf(false) }
 
-    // Initialize player when URIs change or when a specific video is requested
+    // Load playlist when URIs change or when a specific video is requested
     LaunchedEffect(filteredVideoUris, pendingStartVideoIndex) {
+        videoPlayerManager.initialize()
+
         if (filteredVideoUris.isEmpty()) {
             videoPlayerManager.setVideoList(emptyList())
             return@LaunchedEffect
@@ -131,19 +122,9 @@ fun KidPlayerScreen(
         videoPlayerManager.setVideoList(filteredVideoUris, startIndex, startPositionMs)
     }
 
-    val exoPlayer = remember { videoPlayerManager.initialize() }
-
-    val playerView = remember(context) {
-        PlayerView(context).apply {
-            useController = false
-        }
-    }
-
     var playbackError by remember { mutableStateOf<String?>(null) }
 
-    // Controls visibility state — shown on tap, auto-hide after 5 seconds
-    // Hidden by default in kid mode — tap to show; also avoids slider polling while hidden
-    var controlsVisible by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
     // Interaction counter — incremented on any user action to reset the auto-hide timer
     var controlsInteraction by remember { mutableStateOf(0) }
 
@@ -161,12 +142,12 @@ fun KidPlayerScreen(
     var isSeeking by remember { mutableStateOf(false) }
 
     // Update progress only while controls are visible — avoids recomposition every 250ms in kid mode
-    LaunchedEffect(exoPlayer, controlsVisible, isSeeking) {
+    LaunchedEffect(videoPlayerManager, controlsVisible, isSeeking) {
         if (!controlsVisible) return@LaunchedEffect
         while (controlsVisible) {
             if (!isSeeking) {
-                val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
-                val dur = exoPlayer.duration.coerceAtLeast(1L)
+                val pos = videoPlayerManager.currentPosition
+                val dur = videoPlayerManager.duration.coerceAtLeast(1L)
                 duration = dur
                 sliderValue = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
             }
@@ -175,13 +156,13 @@ fun KidPlayerScreen(
     }
 
     // Periodically save playback state every 5 seconds
-    LaunchedEffect(exoPlayer, filteredVideoUris) {
+    LaunchedEffect(videoPlayerManager, filteredVideoUris) {
         if (filteredVideoUris.isEmpty()) return@LaunchedEffect
         while (true) {
             delay(5_000L)
-            val currentIndex = exoPlayer.currentMediaItemIndex
+            val currentIndex = videoPlayerManager.currentMediaItemIndex
             if (currentIndex in filteredVideoUris.indices) {
-                val positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+                val positionMs = videoPlayerManager.currentPosition
                 playbackStateRepository.save(
                     PlaybackStateRepository.PlaybackState(
                         videoUri = filteredVideoUris[currentIndex],
@@ -192,29 +173,17 @@ fun KidPlayerScreen(
         }
     }
 
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                playbackError = error.errorCodeName
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) {
-                    playbackError = null
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose { exoPlayer.removeListener(listener) }
+    DisposableEffect(videoPlayerManager) {
+        videoPlayerManager.playbackListener = VideoPlayerManager.PlaybackListener(
+            onError = { error ->
+                playbackError = error
+                playbackStateRepository.clear()
+            },
+            onReady = { playbackError = null },
+            onPlayingChanged = { /* updated via isPlaying poll in controls */ }
+        )
+        onDispose { videoPlayerManager.playbackListener = null }
     }
-
-    DisposableEffect(rootView) {
-        onDispose {
-            ViewCompat.setSystemGestureExclusionRects(rootView, emptyList())
-        }
-    }
-
-    // isPlaying listener is registered inside the controls block below.
 
     Box(
         modifier = Modifier
@@ -226,12 +195,12 @@ fun KidPlayerScreen(
         // ==============================
         if (filteredVideoUris.isNotEmpty()) {
             AndroidView(
-                factory = { playerView },
-                update = { view ->
-                    if (view.player != exoPlayer) {
-                        view.player = exoPlayer
+                factory = { ctx ->
+                    VLCVideoLayout(ctx).also { layout ->
+                        videoPlayerManager.attachVideoLayout(layout)
                     }
                 },
+                onRelease = { videoPlayerManager.detachVideoLayout() },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -281,9 +250,8 @@ fun KidPlayerScreen(
                     .fillMaxSize()
                     .pointerInput(controlsVisible, controlsInteraction, secretDoorTouchSizePx) {
                         detectTapGestures { offset ->
-                            // Don't steal taps in the top-right secret-door zone
                             val inSecretZone = offset.x >= size.width - secretDoorTouchSizePx &&
-                                offset.y <= secretDoorTouchSizePx
+                                offset.y >= size.height - secretDoorTouchSizePx
                             if (!inSecretZone) {
                                 controlsVisible = !controlsVisible
                                 controlsInteraction++
@@ -298,24 +266,13 @@ fun KidPlayerScreen(
         // ==============================
         if (filteredVideoUris.isNotEmpty()) {
             // Track playing state reactively so the play/pause icon updates
-            var isPlaying by remember {
-                mutableStateOf(
-                    exoPlayer.playWhenReady && exoPlayer.playbackState == Player.STATE_READY
-                )
-            }
+            var isPlaying by remember { mutableStateOf(videoPlayerManager.isPlaying) }
 
-            // Listen for playback state changes to update the play/pause button icon
-            DisposableEffect(exoPlayer) {
-                val listener = object : Player.Listener {
-                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                        isPlaying = playWhenReady && exoPlayer.playbackState == Player.STATE_READY
-                    }
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        isPlaying = exoPlayer.playWhenReady && playbackState == Player.STATE_READY
-                    }
+            LaunchedEffect(videoPlayerManager, controlsVisible) {
+                while (controlsVisible) {
+                    isPlaying = videoPlayerManager.isPlaying
+                    delay(300)
                 }
-                exoPlayer.addListener(listener)
-                onDispose { exoPlayer.removeListener(listener) }
             }
 
             AnimatedVisibility(
@@ -339,7 +296,7 @@ fun KidPlayerScreen(
                             controlsInteraction++
                         },
                         onValueChangeFinished = {
-                            exoPlayer.seekTo((sliderValue * duration).toLong())
+                            videoPlayerManager.seekTo((sliderValue * duration).toLong())
                             isSeeking = false
                             controlsInteraction++
                         },
@@ -367,13 +324,7 @@ fun KidPlayerScreen(
                             onClick = {
                                 controlsInteraction++
                                 if (hasMultipleVideos) {
-                                    val currentIndex = exoPlayer.currentMediaItemIndex
-                                    val newIndex = if (currentIndex == 0) {
-                                        filteredVideoUris.lastIndex
-                                    } else {
-                                        currentIndex - 1
-                                    }
-                                    exoPlayer.seekToDefaultPosition(newIndex)
+                                    videoPlayerManager.previous()
                                 }
                             },
                             backgroundColor = BlueButton,
@@ -398,10 +349,10 @@ fun KidPlayerScreen(
                             text = if (isPlaying) "⏸" else "▶",
                             onClick = {
                                 controlsInteraction++
-                                if (exoPlayer.isPlaying) {
-                                    exoPlayer.pause()
+                                if (videoPlayerManager.isPlaying) {
+                                    videoPlayerManager.pause()
                                 } else {
-                                    exoPlayer.play()
+                                    videoPlayerManager.play()
                                 }
                             },
                             backgroundColor = GreenPrimary,
@@ -426,9 +377,7 @@ fun KidPlayerScreen(
                             onClick = {
                                 controlsInteraction++
                                 if (hasMultipleVideos) {
-                                    val currentIndex = exoPlayer.currentMediaItemIndex
-                                    val newIndex = if (currentIndex == filteredVideoUris.lastIndex) 0 else currentIndex + 1
-                                    exoPlayer.seekToDefaultPosition(newIndex)
+                                    videoPlayerManager.next()
                                 }
                             },
                             backgroundColor = BlueButton,
@@ -456,34 +405,14 @@ fun KidPlayerScreen(
             }
         }
 
-        var secretDoorExclusionRect by remember { mutableStateOf<Rect?>(null) }
-
         Box(
             modifier = Modifier
-                .zIndex(10f)
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(
-                    WindowInsets.statusBars.union(WindowInsets.displayCutout)
-                )
-                .padding(top = 20.dp, end = 16.dp)
+                .align(Alignment.BottomEnd)
+                .padding(end = 8.dp, bottom = 8.dp)
                 .size(SECRET_DOOR_TOUCH_SIZE)
-                .onGloballyPositioned { coordinates ->
-                    val bounds = coordinates.boundsInRoot()
-                    val rect = Rect(
-                        bounds.left.toInt(),
-                        bounds.top.toInt(),
-                        bounds.right.toInt(),
-                        bounds.bottom.toInt()
-                    )
-                    if (secretDoorExclusionRect != rect) {
-                        secretDoorExclusionRect = rect
-                        ViewCompat.setSystemGestureExclusionRects(rootView, listOf(rect))
-                    }
-                }
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        val down = awaitFirstDown()
-                        down.consume()
+                        awaitFirstDown()
                         isVersionPressed = true
                         waitForUpOrCancellation()
                         isVersionPressed = false
@@ -518,11 +447,7 @@ fun KidPlayerScreen(
     }
 }
 
-// Extension property to check if player is playing
-private val Player.isPlaying: Boolean
-    get() = playbackState == Player.STATE_READY && playWhenReady
-
 private const val TAG = "KidPlayerScreen"
 
-/** Touch target for the secret-door version label (top-right). */
+/** Touch target for the secret-door version label (bottom-right). */
 private val SECRET_DOOR_TOUCH_SIZE = 72.dp

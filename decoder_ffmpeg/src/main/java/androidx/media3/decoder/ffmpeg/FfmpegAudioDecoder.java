@@ -36,6 +36,8 @@ import java.util.List;
   // Output buffer sizes when decoding PCM mu-law streams, which is the maximum FFmpeg outputs.
   private static final int OUTPUT_BUFFER_SIZE_16BIT = 65536;
   private static final int OUTPUT_BUFFER_SIZE_32BIT = OUTPUT_BUFFER_SIZE_16BIT * 2;
+  /** AC3/DTS 5.1 downmix to stereo can exceed 64 KB per decode call. */
+  private static final int MULTICHANNEL_BUFFER_SCALE = 8;
 
   private static final int AUDIO_DECODER_ERROR_INVALID_DATA = -1;
   private static final int AUDIO_DECODER_ERROR_OTHER = -2;
@@ -49,6 +51,9 @@ import java.util.List;
   private boolean hasOutputFormat;
   private volatile int channelCount;
   private volatile int sampleRate;
+  /** AVI/AC3 timestamps from the container are often wrong — derive PTS from sample count. */
+  private final boolean useSampleBasedTimestamps;
+  private long outputSampleCount;
 
   public FfmpegAudioDecoder(
       Format format,
@@ -63,9 +68,13 @@ import java.util.List;
     }
     checkNotNull(format.sampleMimeType);
     codecName = checkNotNull(FfmpegLibrary.getCodecName(format.sampleMimeType));
+    useSampleBasedTimestamps = "ac3".equals(codecName) || "eac3".equals(codecName);
     extraData = getExtraData(format.sampleMimeType, format.initializationData);
     encoding = outputFloat ? C.ENCODING_PCM_FLOAT : C.ENCODING_PCM_16BIT;
-    outputBufferSize = outputFloat ? OUTPUT_BUFFER_SIZE_32BIT : OUTPUT_BUFFER_SIZE_16BIT;
+    int baseBufferSize = outputFloat ? OUTPUT_BUFFER_SIZE_32BIT : OUTPUT_BUFFER_SIZE_16BIT;
+    int channelScale =
+        format.channelCount > 2 ? MULTICHANNEL_BUFFER_SCALE : 1;
+    outputBufferSize = baseBufferSize * channelScale;
     nativeContext =
         ffmpegInitialize(codecName, extraData, outputFloat, format.sampleRate, format.channelCount);
     if (nativeContext == 0) {
@@ -101,6 +110,7 @@ import java.util.List;
   protected FfmpegDecoderException decode(
       DecoderInputBuffer inputBuffer, SimpleDecoderOutputBuffer outputBuffer, boolean reset) {
     if (reset) {
+      outputSampleCount = 0;
       nativeContext = ffmpegReset(nativeContext, extraData);
       if (nativeContext == 0) {
         return new FfmpegDecoderException("Error resetting (see logcat).");
@@ -113,10 +123,8 @@ import java.util.List;
     if (result == AUDIO_DECODER_ERROR_OTHER) {
       return new FfmpegDecoderException("Error decoding (see logcat).");
     } else if (result == AUDIO_DECODER_ERROR_INVALID_DATA) {
-      // Treat invalid data errors as non-fatal to match the behavior of MediaCodec. No output will
-      // be produced for this buffer, so mark it as skipped to ensure that the audio sink's
-      // position is reset when more audio is produced.
-      outputBuffer.shouldBeSkipped = true;
+      // Drop corrupt packet without resetting the audio clock (AVI/AC3).
+      outputBuffer.shouldBeSkipped = false;
       return null;
     } else if (result == 0) {
       // There's no need to output empty buffers.
@@ -141,6 +149,12 @@ import java.util.List;
     outputData = checkNotNull(outputBuffer.data);
     outputData.position(0);
     outputData.limit(result);
+    if (useSampleBasedTimestamps && sampleRate > 0 && channelCount > 0) {
+      int bytesPerSample = encoding == C.ENCODING_PCM_FLOAT ? 4 : 2;
+      long framesWritten = result / (bytesPerSample * (long) channelCount);
+      outputBuffer.timeUs = (outputSampleCount * 1_000_000L) / sampleRate;
+      outputSampleCount += framesWritten;
+    }
     return null;
   }
 

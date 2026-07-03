@@ -87,7 +87,8 @@ class VideoCompatibilityChecker(private val context: Context) {
                 var videoCodec: String? = null
                 var audioCodec: String? = null
                 var videoSupported = true  // default: no video track = vacuously supported
-                var audioSupported = true  // default: no audio track = vacuously supported
+                var audioSupported = false // true if at least one audio track is playable
+                var hasAudioTrack = false
                 var videoMime: String? = null
                 var audioMime: String? = null
                 val warnings = mutableListOf<String>()
@@ -109,22 +110,24 @@ class VideoCompatibilityChecker(private val context: Context) {
                             }
                         }
                         mime.startsWith("audio/") -> {
+                            hasAudioTrack = true
                             audioMime = mime
                             audioCodec = audioCodecName(mime)
                             val hwSupported = isHardwareDecoderAvailable(mime)
                             val swSupported = isFfmpegDecoderAvailable(mime)
-                            audioSupported = hwSupported || swSupported
-                            if (!audioSupported) {
-                                warnings.add(
-                                    "Audio codec $audioCodec is not supported by this device"
-                                )
-                            }
+                            val trackSupported = hwSupported || swSupported
+                            audioSupported = audioSupported || trackSupported
                         }
                     }
                 }
 
                 if (videoMime == null && audioMime == null) {
                     warnings.add("No video or audio tracks found in the file")
+                }
+                if (!hasAudioTrack) {
+                    audioSupported = true // no audio track is fine
+                } else if (!audioSupported) {
+                    warnings.add("No playable audio track found on this device")
                 }
 
                 CompatibilityResult(

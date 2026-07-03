@@ -2,13 +2,19 @@ package com.dima.kidsvideoplayer
 
 import android.app.Application
 import android.util.Log
+import com.dima.kidsvideoplayer.player.VideoPlayerManager
 
 /**
  * Application class for KidsVideoPlayer.
- * Currently used only for initialization logging.
- * Can be extended for DI setup, DataStore initialization, etc.
+ * Holds process-wide singletons that must survive Activity recreation
+ * (critical for HOME/kiosk launcher mode).
  */
 class KidsVideoApp : Application() {
+
+    /** Single libVLC player instance for the process — do not release on Activity.onDestroy. */
+    val videoPlayerManager: VideoPlayerManager by lazy {
+        VideoPlayerManager(this)
+    }
 
     override fun onCreate() {
         super.onCreate()

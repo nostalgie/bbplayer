@@ -41,7 +41,6 @@
             android:turnScreenOn="true"
             android:immersive="true"
             android:launchMode="singleTask"
-            android:clearTaskOnLaunch="true"
             android:resizeableActivity="false">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

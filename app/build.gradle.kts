@@ -72,16 +72,10 @@ dependencies {
     // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.7.6")
 
-    // ExoPlayer (Media3)
-    val media3Version = "1.2.1"
-    implementation("androidx.media3:media3-exoplayer:$media3Version")
-    implementation("androidx.media3:media3-ui:$media3Version")
-    implementation("androidx.media3:media3-session:$media3Version")
-    // DASH and HLS streaming support
-    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    // libVLC — same playback engine as VLC (AVI/XVID/AC3 and most local formats)
+    implementation("org.videolan.android:libvlc-all:3.6.2")
 
-    // FFmpeg software audio decoder extension (local module with native FFmpeg libraries)
+    // FFmpeg extension used only by VideoCompatibilityChecker for pre-add validation
     implementation(project(":decoder_ffmpeg"))
 
     // DataStore Preferences
