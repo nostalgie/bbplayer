@@ -37,7 +37,7 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="true"
-            android:screenOrientation="landscape"
+            android:screenOrientation="fullSensor"
             android:turnScreenOn="true"
             android:immersive="true"
             android:launchMode="singleTask"

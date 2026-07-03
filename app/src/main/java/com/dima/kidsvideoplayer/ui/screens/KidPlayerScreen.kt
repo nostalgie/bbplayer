@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -193,9 +194,18 @@ fun KidPlayerScreen(
         if (filteredVideoUris.isNotEmpty()) {
             AndroidView(
                 factory = { ctx -> VLCVideoLayout(ctx) },
-                update = { layout -> videoPlayerManager.attachVideoLayout(layout) },
+                update = { layout ->
+                    videoPlayerManager.attachVideoLayout(layout)
+                    if (layout.width > 0 && layout.height > 0) {
+                        videoPlayerManager.updateVideoSurfaceSize(layout.width, layout.height)
+                    }
+                },
                 onRelease = { videoPlayerManager.detachVideoLayout() },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { size ->
+                        videoPlayerManager.updateVideoSurfaceSize(size.width, size.height)
+                    }
             )
         } else {
             // No videos — show placeholder

@@ -111,6 +111,20 @@ class VideoPlayerManager(
         videoLayout = null
     }
 
+    /** Notify libVLC when the video surface size changes (e.g. screen rotation). */
+    fun updateVideoSurfaceSize(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        val player = mediaPlayer ?: return
+        try {
+            player.vlcVout.setWindowSize(width, height)
+            Log.d(TAG, "Video surface size updated to ${width}x$height")
+        } catch (e: Exception) {
+            Log.w(TAG, "setWindowSize failed, re-attaching surface", e)
+            attachedLayout = null
+            videoLayout?.let { attachVideoLayout(it) }
+        }
+    }
+
     fun setVideoList(uris: List<String>, startIndex: Int = 0, startPositionMs: Long = 0) {
         playlist = uris
         if (uris.isEmpty()) {
