@@ -1,5 +1,6 @@
 package com.dima.kidsvideoplayer.ui.screens
 
+import android.graphics.Rect
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -24,12 +25,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
@@ -49,7 +55,7 @@ import kotlinx.coroutines.delay
  * Features:
  * - ExoPlayer video playback via PlayerView
  * - Prev/Next bounce buttons at the bottom
- * - "v1.0" text in corner — secret door (long press 1 second → PIN dialog)
+ * - "v1.0" text in top-right corner — secret door (long press 1 second → PIN dialog)
  * - PIN dialog → if correct, navigates to Parent Dashboard
  */
 @Composable
@@ -61,7 +67,8 @@ fun KidPlayerScreen(
     isLockTaskActive: Boolean,
     pendingStartVideoIndex: Int = -1
 ) {
-    val context = LocalContext.current
+    val rootView = LocalView.current
+    val secretDoorTouchSizePx = with(LocalDensity.current) { SECRET_DOOR_TOUCH_SIZE.toPx() }
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
     val selectedVideos by videoRepository.selectedVideos.collectAsStateWithLifecycle(initialValue = emptySet())
     
@@ -231,10 +238,15 @@ fun KidPlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(controlsVisible, controlsInteraction) {
-                        detectTapGestures {
-                            controlsVisible = !controlsVisible
-                            controlsInteraction++
+                    .pointerInput(controlsVisible, controlsInteraction, secretDoorTouchSizePx) {
+                        detectTapGestures { offset ->
+                            // Don't steal taps in the top-right secret-door zone
+                            val inSecretZone = offset.x >= size.width - secretDoorTouchSizePx &&
+                                offset.y <= secretDoorTouchSizePx
+                            if (!inSecretZone) {
+                                controlsVisible = !controlsVisible
+                                controlsInteraction++
+                            }
                         }
                     }
             )
@@ -399,16 +411,42 @@ fun KidPlayerScreen(
             }
         }
 
+        var secretDoorExclusionRect by remember { mutableStateOf<Rect?>(null) }
+
+        DisposableEffect(rootView, secretDoorExclusionRect) {
+            val rect = secretDoorExclusionRect
+            if (rect != null) {
+                ViewCompat.setSystemGestureExclusionRects(rootView, listOf(rect))
+            }
+            onDispose {
+                ViewCompat.setSystemGestureExclusionRects(rootView, emptyList())
+            }
+        }
+
         Box(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 4.dp, bottom = 4.dp)
-                .size(48.dp)
+                .zIndex(10f)
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(
+                    WindowInsets.statusBars.union(WindowInsets.displayCutout)
+                )
+                // Pull inward from the physical corner — Honor treats the edge as a system gesture zone
+                .padding(top = 20.dp, end = 16.dp)
+                .size(SECRET_DOOR_TOUCH_SIZE)
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInRoot()
+                    secretDoorExclusionRect = Rect(
+                        bounds.left.toInt(),
+                        bounds.top.toInt(),
+                        bounds.right.toInt(),
+                        bounds.bottom.toInt()
+                    )
+                }
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        awaitFirstDown()
+                        val down = awaitFirstDown()
+                        down.consume()
                         isVersionPressed = true
-                        // Wait for finger up or cancellation — cancels the timer above
                         waitForUpOrCancellation()
                         isVersionPressed = false
                     }
@@ -417,7 +455,7 @@ fun KidPlayerScreen(
         ) {
             Text(
                 text = "v1.0",
-                fontSize = 14.sp,
+                fontSize = 18.sp,
                 color = if (isVersionPressed) {
                     Color.White.copy(alpha = 0.7f)
                 } else {
@@ -447,3 +485,6 @@ private val Player.isPlaying: Boolean
     get() = playbackState == Player.STATE_READY && playWhenReady
 
 private const val TAG = "KidPlayerScreen"
+
+/** Touch target for the secret-door version label (top-right). */
+private val SECRET_DOOR_TOUCH_SIZE = 72.dp

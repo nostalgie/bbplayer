@@ -135,6 +135,17 @@ class LockTaskManager(private val context: Context) {
         }
 
         try {
+            // By default Android enables ALL lock task features, including OVERVIEW
+            // (recents / gesture navigation). On Honor that lets the child swipe
+            // sideways and close the app. Disable every system escape hatch.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                dpm.setLockTaskFeatures(
+                    adminComponent,
+                    DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                )
+                Log.d(TAG, "Lock task features disabled (no recents/home/power menu)")
+            }
+
             // Disable status bar — prevents child from pulling down notifications
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 dpm.setStatusBarDisabled(adminComponent, true)
@@ -159,11 +170,12 @@ class LockTaskManager(private val context: Context) {
                 Log.d(TAG, "Keyguard disabled")
             }
 
-            // Keep device awake while plugged in (1=AC, 2=USB, 4=Wireless)
-            Settings.Global.putInt(
-                context.contentResolver,
+            // Keep device awake while plugged in (1=AC, 2=USB)
+            val stayOn = (BatteryManager.BATTERY_PLUGGED_AC or BatteryManager.BATTERY_PLUGGED_USB).toString()
+            dpm.setGlobalSetting(
+                adminComponent,
                 Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
-                BatteryManager.BATTERY_PLUGGED_AC or BatteryManager.BATTERY_PLUGGED_USB
+                stayOn
             )
             Log.d(TAG, "Stay-on-while-plugged-in enabled")
 
@@ -201,6 +213,19 @@ class LockTaskManager(private val context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 dpm.setKeyguardDisabled(adminComponent, false)
                 Log.d(TAG, "Keyguard re-enabled")
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                dpm.setLockTaskFeatures(
+                    adminComponent,
+                    DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
+                )
+                Log.d(TAG, "Lock task features restored to default")
             }
 
             Log.d(TAG, "All kiosk policies removed successfully")
