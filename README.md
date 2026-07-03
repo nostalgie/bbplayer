@@ -204,6 +204,7 @@ adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
 - `HuaweiStorageHelper` распознаёт производителей `huawei` и `honor` для SD-карты
 - На Android 13 нужен `MANAGE_EXTERNAL_STORAGE` для файлового браузера
 - Экран **поворачивается вместе с планшетом** во все 4 стороны (`fullSensor` в манифесте)
+- Пока приложение открыто, экран **не гаснет** по таймауту (`FLAG_KEEP_SCREEN_ON`); на батарее расход выше при длительном просмотре
 
 ## Технологический стек
 
