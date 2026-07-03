@@ -1,6 +1,7 @@
 package com.dima.kidsvideoplayer.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -8,6 +9,7 @@ import com.dima.kidsvideoplayer.AppState
 import com.dima.kidsvideoplayer.ui.screens.FilePickerScreen
 import com.dima.kidsvideoplayer.ui.screens.KidPlayerScreen
 import com.dima.kidsvideoplayer.ui.screens.ParentDashboardScreen
+import kotlinx.coroutines.delay
 
 /**
  * Navigation routes for the app.
@@ -17,6 +19,8 @@ object Routes {
     const val PARENT_DASHBOARD = "parent_dashboard"
     const val FILE_PICKER = "file_picker"
 }
+
+private const val KIOSK_START_DELAY_MS = 800L
 
 /**
  * Main navigation host for the app.
@@ -32,6 +36,14 @@ fun AppNavHost(
     navController: NavHostController,
     appState: AppState
 ) {
+    // Auto-enter kiosk after first frame so libVLC can initialize first.
+    LaunchedEffect(Unit) {
+        delay(KIOSK_START_DELAY_MS)
+        if (!appState.lockTaskManager.isLockTaskRunning()) {
+            appState.enterKidMode()
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Routes.KID_PLAYER
@@ -42,9 +54,8 @@ fun AppNavHost(
                 videoPlayerManager = appState.videoPlayerManager,
                 playbackStateRepository = appState.playbackStateRepository,
                 onSecretDoorActivated = {
-                    // Pause video before navigating to parent dashboard
+                    appState.exitKidMode()
                     appState.videoPlayerManager.pause()
-                    // Navigate to parent dashboard when secret door is triggered
                     navController.navigate(Routes.PARENT_DASHBOARD) {
                         popUpTo(Routes.KID_PLAYER) { inclusive = false }
                     }
@@ -59,9 +70,7 @@ fun AppNavHost(
                 videoRepository = appState.videoRepository,
                 videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBackToKidMode = {
-                    // Play video before returning to kid mode
                     appState.videoPlayerManager.play()
-                    // Navigate back to kid player and enter kiosk mode
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
                     appState.enterKidMode()
                 },
@@ -82,7 +91,6 @@ fun AppNavHost(
                 videoRepository = appState.videoRepository,
                 videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBack = {
-                    // Play video when returning from file picker to parent dashboard
                     appState.videoPlayerManager.play()
                     navController.popBackStack(Routes.PARENT_DASHBOARD, inclusive = false)
                 }

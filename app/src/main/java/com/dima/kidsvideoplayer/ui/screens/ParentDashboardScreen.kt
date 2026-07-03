@@ -319,7 +319,7 @@ fun ParentDashboardScreen(
     pendingPinAction?.let { action ->
         PinDialog(
             title = when (action) {
-                PinAction.EXIT -> "Введите ПИН для выхода"
+                PinAction.EXIT -> "Введите ПИН для снятия киоска"
                 PinAction.ADD_VIDEOS -> "Введите ПИН для добавления видео"
             },
             onDismiss = { pendingPinAction = null },
@@ -552,7 +552,7 @@ fun ParentDashboardScreen(
                 )
 
                 BounceButton(
-                    text = "Выйти",
+                    text = "Снять киоск",
                     onClick = { requestPin(PinAction.EXIT) },
                     backgroundColor = ExitRed,
                     textColor = Color.White,

@@ -9,8 +9,8 @@ Android-приложение — видеоплеер для детей с ро�
 | Режим | Экран | Описание | Доступ |
 |-------|-------|----------|--------|
 | Детский | `KidPlayerScreen` | Полноэкранный плеер, навигация между видео, киоск | По умолчанию |
-| Родительский | `ParentDashboardScreen` | Управление плейлистом, запуск видео | Long press «v1.0» → PIN `1234` |
-| Выбор файлов | `FilePickerScreen` | Браузер файлов на устройстве | Из родительского экрана |
+| Родительский | `ParentDashboardScreen` | Управление плейлистом, запуск видео | Long press шестерёнки 3 сек (без PIN) |
+| Выбор файлов | `FilePickerScreen` | Браузер файлов на устройстве | Из родительского экрана (PIN `1234`) |
 
 ## Структура проекта
 
@@ -70,7 +70,8 @@ app/src/main/java/com/dima/kidsvideoplayer/
 | Задача | Файл |
 |--------|------|
 | Киоск: старт/стоп, политики | `admin/LockTaskManager.kt` |
-| Автозапуск киоска при старте | `MainActivity.kt` |
+| Автозапуск киоска при старте | `navigation/AppNavHost.kt`, `MainActivity.kt` |
+| Полный админский выход | `LockTaskManager.relinquishDeviceOwner()`, `MainActivity.exitApp()` |
 | Device Admin + HOME launcher | `AndroidManifest.xml`, `res/xml/device_admin_policies.xml` |
 | Родительский PIN | `ui/components/PinDialog.kt` |
 | Секретная дверь | `ui/screens/KidPlayerScreen.kt` |
@@ -101,14 +102,25 @@ FilePickerScreen / ParentDashboardScreen
   → PlaybackStateRepository (возобновление с позиции)
 ```
 
-### Секретная дверь
+### Секретная дверь и админский доступ
 
-```
-Long press "v1.0" (1 сек) → PinDialog → PIN "1234"
-  → ParentDashboardScreen (киоск остаётся активным)
-```
+**Вход в настройки (без PIN):** удерживайте иконку шестерёнки в правом верхнем углу плеера **3 секунды** → `ParentDashboardScreen`. Lock Task временно снимается.
 
-Возврат: «Назад» или выбор видео → `enterKidMode()` (перезапуск Lock Task).
+**PIN `1234` нужен для:**
+- добавления видео (кнопка «Добавить» или пустой список);
+- полного снятия киоска (кнопка «Снять киоск»).
+
+**Возврат в детский режим:** «Назад» или выбор видео → `enterKidMode()` (Lock Task снова включается).
+
+### Админский выход (снять киоск и удалить приложение)
+
+| Способ | Когда использовать |
+|--------|-------------------|
+| **В приложении** | Шестерёнка 3 сек → «Снять киоск» → PIN `1234`. Снимает Lock Task, политики Device Owner и статус владельца устройства. После этого APK удаляется как обычное приложение. |
+| **ADB** | Приложение зависло или забыли PIN: `adb shell dpm remove-active-admin com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver` затем `adb uninstall com.dima.kidsvideoplayer` |
+| **Сброс** | Recovery → сброс к заводским настройкам (ядерный вариант без ПК) |
+
+Подробнее: [docs/PHONE_SETUP.md](docs/PHONE_SETUP.md) (разделы 8.4–8.6).
 
 ## Режим киоска
 
@@ -125,10 +137,11 @@ Long press "v1.0" (1 сек) → PinDialog → PIN "1234"
 
 - `startKioskMode()` — whitelist (Device Owner) + `startLockTask()`
 - `stopKioskMode()` — `stopLockTask()`
-- `applyKioskPolicies()` — отключить статус-бар, HOME launcher, keyguard, stay-awake
+- `applyKioskPolicies()` — отключить статус-бар, HOME launcher, keyguard, stay-awake, заблокировать «Недавние»
 - `removeKioskPolicies()` — снять политики при выходе
+- `relinquishDeviceOwner()` — снять статус Device Owner (`clearDeviceOwnerApp`), чтобы можно было удалить APK
 
-`MainActivity` автоматически запускает киоск при каждом старте.
+`AppNavHost` автоматически запускает киоск через ~800 мс после старта (после инициализации плеера).
 
 ## Сборка и установка
 
@@ -169,15 +182,16 @@ adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
 
 ### 3. Добавить видео
 
-1. Long press «v1.0» → PIN `1234`
-2. Родительский экран → файловый пикер
+1. Удерживайте **шестерёнку** 3 сек → родительский экран (без PIN)
+2. «Добавить» → PIN `1234` → файловый пикер
 3. Выдать **«Доступ ко всем файлам»**: Настройки → Приложения → Детский Видеоплеер → Разрешения → Файлы и медиа
-4. Выбрать папку/видео → вернуться в детский режим
+4. Выбрать папку/видео → «Назад» в детский режим (киоск включится снова)
 
-### 4. Выход
+### 4. Админский выход
 
-- **Родительский режим:** PIN → родительский экран (киоск остаётся)
-- **Полный выход:** Parent Dashboard → Exit App (снимает политики киоска)
+- **Временно в настройки:** шестерёнка 3 сек (Lock Task снимается, PIN не нужен)
+- **Полностью снять киоск:** «Снять киоск» → PIN `1234` → обычный рабочий стол, можно удалить APK
+- **Через ADB:** см. раздел «Админский выход» выше или `scripts/deploy-kiosk.sh`
 
 ### Быстрый тест без Device Owner
 
@@ -212,7 +226,7 @@ adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
 - [x] ExoPlayer + FFmpeg-декодер
 - [x] Проверка совместимости видео
 - [x] Сохранение позиции воспроизведения
-- [x] PIN-защита родительского режима
+- [x] PIN-защита добавления видео и снятия киоска
 - [x] Поддержка Huawei/Honor SD-карты
 
 ### В планах

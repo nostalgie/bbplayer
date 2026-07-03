@@ -54,8 +54,9 @@ class AppState(
         isLockTaskActive = false
     }
 
-    /** Exit the app completely. */
+    /** Exit the app completely — clears kiosk state then delegates to Activity. */
     fun exitApp() {
+        isLockTaskActive = false
         onExitApp()
     }
 }

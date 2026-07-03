@@ -14,9 +14,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.dima.kidsvideoplayer.admin.LockTaskManager
@@ -36,13 +35,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var videoCompatibilityChecker: VideoCompatibilityChecker
     private lateinit var playbackStateRepository: PlaybackStateRepository
 
-    // Track whether we're currently in kiosk/lock-task mode
-    private var isLockTaskActive = mutableStateOf(false)
+    /** Single source of truth for kiosk state — set from Compose [AppState]. */
+    private var appState: AppState? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize managers — use Application context to avoid memory leaks
         val appContext = applicationContext
         lockTaskManager = LockTaskManager(appContext)
         videoRepository = VideoRepository(appContext)
@@ -51,19 +49,9 @@ class MainActivity : ComponentActivity() {
 
         requestVideoPermissionIfNeeded()
 
-        // Emergency: strip kiosk policies on launch (recover from crash/Smart Recovery loops).
-        if (lockTaskManager.isDeviceOwner()) {
-            lockTaskManager.removeKioskPolicies()
-        }
-
-        // Full immersive mode — hide status bar and navigation bar
         enableEdgeToEdge()
         hideSystemUI()
 
-        // Apply kiosk device policies only when explicitly entering kid mode (not on cold start).
-        // (Policies are removed above on launch for recovery.)
-
-        // Set up Compose content
         setContent {
             KidsVideoPlayerTheme {
                 Surface(
@@ -72,7 +60,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
 
-                    val appState = rememberAppState(
+                    val state = rememberAppState(
                         lockTaskManager = lockTaskManager,
                         videoRepository = videoRepository,
                         videoPlayerManager = videoPlayerManager,
@@ -83,20 +71,16 @@ class MainActivity : ComponentActivity() {
                         onExitApp = { exitApp() }
                     )
 
-                    // Sync lock task state from Activity to AppState
-                    LaunchedEffect(isLockTaskActive.value) {
-                        // AppState reads from Activity's ground truth
-                    }
+                    SideEffect { appState = state }
 
                     AppNavHost(
                         navController = navController,
-                        appState = appState
+                        appState = state
                     )
                 }
             }
         }
 
-        // Wait for content to be laid out, then splash screen disappears
         val content: View = findViewById(android.R.id.content)
         content.viewTreeObserver.addOnPreDrawListener(
             object : ViewTreeObserver.OnPreDrawListener {
@@ -106,9 +90,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         )
-
-        // Kiosk is entered via enterKidMode() from UI — not automatically on cold start,
-        // to avoid crash/relaunch loops when the app is also the HOME launcher.
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -119,19 +100,15 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         videoPlayerManager.pause()
-
-        // Save playback state when app goes to background
         savePlaybackState()
     }
 
     override fun onResume() {
         super.onResume()
-        // Always hide system UI
         hideSystemUI()
 
-        // If in kiosk mode, ensure lock task is still active and resume playback
-        if (isLockTaskActive.value) {
-            if (!lockTaskManager.isLockTaskRunning() && lockTaskManager.isDeviceOwner()) {
+        if (appState?.isLockTaskActive == true) {
+            if (!lockTaskManager.isLockTaskRunning()) {
                 Log.d(TAG, "Re-starting kiosk mode in onResume (was lost)")
                 lockTaskManager.startKioskMode(this)
             }
@@ -146,54 +123,29 @@ class MainActivity : ComponentActivity() {
         // releasing the player or stopping lock task causes a crash/relaunch loop.
     }
 
-    // ==============================
-    // Lock Task Mode Management
-    // ==============================
-
-    /**
-     * Enter Kid Mode: start Lock Task (Kiosk Mode).
-     * This pins the app to the screen so the child cannot leave.
-     */
     private fun enterKidMode() {
         Log.d(TAG, "Entering Kid Mode — starting Lock Task")
         if (lockTaskManager.isDeviceOwner()) {
             lockTaskManager.applyKioskPolicies()
         }
         lockTaskManager.startKioskMode(this)
-        isLockTaskActive.value = true
         hideSystemUI()
     }
 
-    /**
-     * Exit Kid Mode: stop Lock Task.
-     * Called after parent successfully enters PIN code.
-     */
     private fun exitKidMode() {
         Log.d(TAG, "Exiting Kid Mode — stopping Lock Task")
         lockTaskManager.stopKioskMode(this)
-        isLockTaskActive.value = false
     }
 
-    /**
-     * Exit the app completely.
-     * Called from the Parent Dashboard "Exit App" button.
-     */
     private fun exitApp() {
-        Log.d(TAG, "Exiting app from Parent Dashboard")
+        Log.d(TAG, "Full admin exit — de-kiosk and relinquish Device Owner")
         exitKidMode()
         lockTaskManager.removeKioskPolicies()
+        lockTaskManager.relinquishDeviceOwner()
         videoPlayerManager.release()
         finishAffinity()
     }
 
-    // ==============================
-    // Playback State Persistence
-    // ==============================
-
-    /**
-     * Save current playback state (video URI + position) so we can resume later.
-     * Called from [onPause] to capture the most up-to-date position.
-     */
     private fun savePlaybackState() {
         val uri = videoPlayerManager.getCurrentVideoUri() ?: return
         val positionMs = videoPlayerManager.currentPosition
@@ -207,13 +159,6 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Saved playback state: uri=$uri, position=${positionMs}ms")
     }
 
-    // ==============================
-    // Full Immersive Mode
-    // ==============================
-
-    /**
-     * Hide status bar, navigation bar — full immersive sticky mode.
-     */
     private fun hideSystemUI() {
         val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
         windowInsetsController.systemBarsBehavior =

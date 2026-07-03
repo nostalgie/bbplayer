@@ -235,6 +235,25 @@ class LockTaskManager(private val context: Context) {
     }
 
     /**
+     * Relinquish Device Owner so the app can be uninstalled normally.
+     * Only callable while this app is the device owner.
+     */
+    fun relinquishDeviceOwner(): Boolean {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "Cannot relinquish — app is not Device Owner")
+            return false
+        }
+        return try {
+            dpm.clearDeviceOwnerApp(context.packageName)
+            Log.d(TAG, "Device Owner relinquished successfully")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to relinquish Device Owner", e)
+            false
+        }
+    }
+
+    /**
      * Request Device Admin activation via system dialog.
      */
     fun requestDeviceAdmin(launcher: ActivityResultLauncher<Intent>) {
