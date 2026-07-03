@@ -9,6 +9,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
@@ -52,11 +53,27 @@ class VideoPlayerManager(
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        // Enable software decoder fallback for codecs not supported by hardware
+        // Use FFmpeg only when hardware decoding is unavailable — saves native memory.
         val renderersFactory = DefaultRenderersFactory(context)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+
+        // Keep buffers small — default ExoPlayer settings can exceed the 128MB app heap
+        // on mid-range devices when playing large/local video files.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 2_500,
+                /* maxBufferMs = */ 10_000,
+                /* bufferForPlaybackMs = */ 1_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 2_000
+            )
+            .setTargetBufferBytes(4 * 1024 * 1024) // 4 MB cap
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .setBackBuffer(/* backBufferDurationMs = */ 0, /* retainBackBufferFromKeyframe = */ false)
+            .build()
 
         val exoPlayer = ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
+            .setUseLazyPreparation(true)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .build()
@@ -69,11 +86,12 @@ class VideoPlayerManager(
 
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "Player error: ${error.message}", error)
+                // Avoid logging full stack traces — can trigger secondary OOM when heap is full
+                Log.e(TAG, "Player error: code=${error.errorCodeName}, msg=${error.message}")
+                exoPlayer.stop()
                 if (error.cause is MediaCodecRenderer.DecoderInitializationException) {
                     val decoderError = error.cause as MediaCodecRenderer.DecoderInitializationException
-                    Log.e(TAG, "Decoder init failed: mimeType=${decoderError.mimeType}, " +
-                        "secureDecoderRequired=${decoderError.secureDecoderRequired}")
+                    Log.e(TAG, "Decoder init failed: mimeType=${decoderError.mimeType}")
                 }
                 onError?.invoke(error)
             }
@@ -90,6 +108,9 @@ class VideoPlayerManager(
      */
     fun setVideoList(uris: List<String>, startIndex: Int = 0, startPositionMs: Long = 0) {
         val exoPlayer = player ?: return
+
+        // Release decoder/buffer memory from the previous item before loading a new playlist.
+        exoPlayer.stop()
         exoPlayer.clearMediaItems()
 
         uris.forEach { uriString ->
@@ -106,6 +127,8 @@ class VideoPlayerManager(
         if (uris.isNotEmpty()) {
             exoPlayer.seekTo(safeIndex, startPositionMs)
             exoPlayer.prepare()
+        } else {
+            exoPlayer.stop()
         }
 
         currentMediaItemIndex = safeIndex

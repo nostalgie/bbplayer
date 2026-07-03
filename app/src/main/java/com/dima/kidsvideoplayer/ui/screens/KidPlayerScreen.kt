@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +38,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
@@ -67,6 +69,7 @@ fun KidPlayerScreen(
     isLockTaskActive: Boolean,
     pendingStartVideoIndex: Int = -1
 ) {
+    val context = LocalContext.current
     val rootView = LocalView.current
     val secretDoorTouchSizePx = with(LocalDensity.current) { SECRET_DOOR_TOUCH_SIZE.toPx() }
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -89,54 +92,58 @@ fun KidPlayerScreen(
 
     // Initialize player when URIs change or when a specific video is requested
     LaunchedEffect(filteredVideoUris, pendingStartVideoIndex) {
-        if (filteredVideoUris.isNotEmpty()) {
-            val startIndex: Int
-            val startPositionMs: Long
+        if (filteredVideoUris.isEmpty()) {
+            videoPlayerManager.setVideoList(emptyList())
+            return@LaunchedEffect
+        }
 
-            if (pendingStartVideoIndex >= 0) {
-                // Explicit video requested from parent dashboard
-                startIndex = pendingStartVideoIndex
-                startPositionMs = 0L
-            } else if (!hasRestoredState) {
-                // First launch — try to restore saved playback state
-                hasRestoredState = true
-                val saved = playbackStateRepository.get()
-                if (saved != null) {
-                    val savedIndex = videoUris.indexOf(saved.videoUri)
-                    if (savedIndex >= 0) {
-                        // Saved video is still available — restore position
-                        Log.d(TAG, "Restoring playback: uri=${saved.videoUri}, position=${saved.positionMs}")
-                        startIndex = savedIndex
-                        startPositionMs = saved.positionMs
-                    } else {
-                        // Saved video no longer available — start from beginning
-                        Log.d(TAG, "Saved video no longer available, starting from first video")
-                        startIndex = 0
-                        startPositionMs = 0L
-                        playbackStateRepository.clear()
-                    }
+        val startIndex: Int
+        val startPositionMs: Long
+
+        if (pendingStartVideoIndex >= 0) {
+            startIndex = pendingStartVideoIndex.coerceIn(0, filteredVideoUris.lastIndex)
+            startPositionMs = 0L
+        } else if (!hasRestoredState) {
+            hasRestoredState = true
+            val saved = playbackStateRepository.get()
+            if (saved != null) {
+                val savedIndex = filteredVideoUris.indexOf(saved.videoUri)
+                if (savedIndex >= 0) {
+                    Log.d(TAG, "Restoring playback: uri=${saved.videoUri}, position=${saved.positionMs}")
+                    startIndex = savedIndex
+                    startPositionMs = saved.positionMs
                 } else {
-                    // No saved state — default behavior
+                    Log.d(TAG, "Saved video no longer in playlist, starting from first")
                     startIndex = 0
                     startPositionMs = 0L
+                    playbackStateRepository.clear()
                 }
             } else {
-                // Subsequent URI changes (not first launch)
                 startIndex = 0
                 startPositionMs = 0L
             }
+        } else {
+            startIndex = 0
+            startPositionMs = 0L
+        }
 
-            videoPlayerManager.setVideoList(filteredVideoUris, startIndex, startPositionMs)
+        Log.d(TAG, "Loading playlist: ${filteredVideoUris.size} videos, startIndex=$startIndex")
+        videoPlayerManager.setVideoList(filteredVideoUris, startIndex, startPositionMs)
+    }
+
+    val exoPlayer = remember { videoPlayerManager.initialize() }
+
+    val playerView = remember(context) {
+        PlayerView(context).apply {
+            useController = false
         }
     }
 
-    // Create PlayerView once — lifecycle is owned by MainActivity
-    val exoPlayer = remember {
-        videoPlayerManager.initialize()
-    }
+    var playbackError by remember { mutableStateOf<String?>(null) }
 
     // Controls visibility state — shown on tap, auto-hide after 5 seconds
-    var controlsVisible by remember { mutableStateOf(true) }
+    // Hidden by default in kid mode — tap to show; also avoids slider polling while hidden
+    var controlsVisible by remember { mutableStateOf(false) }
     // Interaction counter — incremented on any user action to reset the auto-hide timer
     var controlsInteraction by remember { mutableStateOf(0) }
 
@@ -153,25 +160,27 @@ fun KidPlayerScreen(
     var duration by remember { mutableStateOf(1L) }
     var isSeeking by remember { mutableStateOf(false) }
 
-    // Poll player position every 250ms
-    LaunchedEffect(exoPlayer) {
-        while (true) {
+    // Update progress only while controls are visible — avoids recomposition every 250ms in kid mode
+    LaunchedEffect(exoPlayer, controlsVisible, isSeeking) {
+        if (!controlsVisible) return@LaunchedEffect
+        while (controlsVisible) {
             if (!isSeeking) {
                 val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
                 val dur = exoPlayer.duration.coerceAtLeast(1L)
                 duration = dur
                 sliderValue = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
             }
-            delay(250)
+            delay(500)
         }
     }
 
     // Periodically save playback state every 5 seconds
-    LaunchedEffect(exoPlayer, videoUris) {
+    LaunchedEffect(exoPlayer, filteredVideoUris) {
+        if (filteredVideoUris.isEmpty()) return@LaunchedEffect
         while (true) {
             delay(5_000L)
             val currentIndex = exoPlayer.currentMediaItemIndex
-            if (currentIndex >= 0 && currentIndex < filteredVideoUris.size) {
+            if (currentIndex in filteredVideoUris.indices) {
                 val positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
                 playbackStateRepository.save(
                     PlaybackStateRepository.PlaybackState(
@@ -183,6 +192,30 @@ fun KidPlayerScreen(
         }
     }
 
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                playbackError = error.errorCodeName
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    playbackError = null
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    DisposableEffect(rootView) {
+        onDispose {
+            ViewCompat.setSystemGestureExclusionRects(rootView, emptyList())
+        }
+    }
+
+    // isPlaying listener is registered inside the controls block below.
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -193,14 +226,10 @@ fun KidPlayerScreen(
         // ==============================
         if (filteredVideoUris.isNotEmpty()) {
             AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exoPlayer
-                        useController = false // Hide default controls — we have custom buttons
-                        layoutParams = android.widget.FrameLayout.LayoutParams(
-                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-                        )
+                factory = { playerView },
+                update = { view ->
+                    if (view.player != exoPlayer) {
+                        view.player = exoPlayer
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -231,10 +260,22 @@ fun KidPlayerScreen(
             }
         }
 
+        playbackError?.let { error ->
+            Text(
+                text = "⚠️ Не удалось воспроизвести видео\n($error)",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp)
+            )
+        }
+
         // ==============================
         // Tap overlay — toggle controls on tap
         // ==============================
-        if (videoUris.isNotEmpty()) {
+        if (filteredVideoUris.isNotEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -255,7 +296,7 @@ fun KidPlayerScreen(
         // ==============================
         // Controls (buttons + progress bar) with fade animation
         // ==============================
-        if (videoUris.isNotEmpty()) {
+        if (filteredVideoUris.isNotEmpty()) {
             // Track playing state reactively so the play/pause icon updates
             var isPlaying by remember {
                 mutableStateOf(
@@ -327,7 +368,11 @@ fun KidPlayerScreen(
                                 controlsInteraction++
                                 if (hasMultipleVideos) {
                                     val currentIndex = exoPlayer.currentMediaItemIndex
-                                    val newIndex = if (currentIndex == 0) videoUris.lastIndex else currentIndex - 1
+                                    val newIndex = if (currentIndex == 0) {
+                                        filteredVideoUris.lastIndex
+                                    } else {
+                                        currentIndex - 1
+                                    }
                                     exoPlayer.seekToDefaultPosition(newIndex)
                                 }
                             },
@@ -413,16 +458,6 @@ fun KidPlayerScreen(
 
         var secretDoorExclusionRect by remember { mutableStateOf<Rect?>(null) }
 
-        DisposableEffect(rootView, secretDoorExclusionRect) {
-            val rect = secretDoorExclusionRect
-            if (rect != null) {
-                ViewCompat.setSystemGestureExclusionRects(rootView, listOf(rect))
-            }
-            onDispose {
-                ViewCompat.setSystemGestureExclusionRects(rootView, emptyList())
-            }
-        }
-
         Box(
             modifier = Modifier
                 .zIndex(10f)
@@ -430,17 +465,20 @@ fun KidPlayerScreen(
                 .windowInsetsPadding(
                     WindowInsets.statusBars.union(WindowInsets.displayCutout)
                 )
-                // Pull inward from the physical corner — Honor treats the edge as a system gesture zone
                 .padding(top = 20.dp, end = 16.dp)
                 .size(SECRET_DOOR_TOUCH_SIZE)
                 .onGloballyPositioned { coordinates ->
                     val bounds = coordinates.boundsInRoot()
-                    secretDoorExclusionRect = Rect(
+                    val rect = Rect(
                         bounds.left.toInt(),
                         bounds.top.toInt(),
                         bounds.right.toInt(),
                         bounds.bottom.toInt()
                     )
+                    if (secretDoorExclusionRect != rect) {
+                        secretDoorExclusionRect = rect
+                        ViewCompat.setSystemGestureExclusionRects(rootView, listOf(rect))
+                    }
                 }
                 .pointerInput(Unit) {
                     awaitEachGesture {
