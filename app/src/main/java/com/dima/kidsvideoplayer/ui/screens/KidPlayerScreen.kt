@@ -247,8 +247,7 @@ fun KidPlayerScreen(
                 onSeekForward = { offsetMs ->
                     controlsInteraction++
                     videoPlayerManager.seekForward(offsetMs)
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                }
             )
         }
 

@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dima.kidsvideoplayer.player.SeekAccelerator
@@ -27,6 +28,7 @@ fun SeekButton(
     icon: ImageVector,
     contentDescription: String,
     onSeek: (offsetMs: Long) -> Unit,
+    size: Dp = 80.dp,
     modifier: Modifier = Modifier
 ) {
     var isPressed by remember { mutableStateOf(false) }
@@ -39,9 +41,11 @@ fun SeekButton(
     val backgroundColor = Color(0xFF42A5F5)
     val textColor = Color.White
 
+    val iconSize = (size.value * 36 / 80).dp
+
     Surface(
         modifier = modifier
-            .size(80.dp)
+            .size(size)
             .graphicsLayer {
                 scaleX = combinedScale
                 scaleY = combinedScale
@@ -90,7 +94,7 @@ fun SeekButton(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 tint = textColor,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(iconSize)
             )
 
             if (seekLabel != null) {
