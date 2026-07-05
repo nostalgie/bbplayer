@@ -6,16 +6,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,10 +36,13 @@ import com.dima.kidsvideoplayer.ui.theme.ExitRed
 import com.dima.kidsvideoplayer.ui.theme.FolderBlue
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
 import com.dima.kidsvideoplayer.ui.theme.RedButton
+import androidx.compose.foundation.lazy.rememberLazyListState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-private val BUTTON_SIZE = 120.dp
-private val BUTTON_HEIGHT = 60.dp
+private val BUTTON_WIDTH = 88.dp
+private val BUTTON_HEIGHT = 40.dp
+private val BUTTON_FONT_SIZE = 12.sp
 
 private enum class PinAction {
     EXIT,
@@ -155,175 +160,291 @@ fun ParentDashboardScreen(
         )
     }
 
+    val isPortrait = LocalConfiguration.current.screenHeightDp > LocalConfiguration.current.screenWidthDp
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(DashboardBackground)
             .padding(12.dp)
     ) {
-        // ==============================
-        // Main content: Video list on the left, buttons on the right
-        // ==============================
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Left side: Video list
-            Column(
-                modifier = Modifier.weight(1f)
+        if (isPortrait) {
+            DashboardActionButtons(
+                videoCount = videoUris.size,
+                horizontal = true,
+                onBackToKidMode = onBackToKidMode,
+                onAddVideos = { requestPin(PinAction.ADD_VIDEOS) },
+                onClearAll = { showClearAllDialog = true },
+                onExitKiosk = { requestPin(PinAction.EXIT) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            DashboardVideoList(
+                videoUris = videoUris,
+                expandedFolders = expandedFolders,
+                selectedVideos = selectedVideos,
+                videoListState = videoListState,
+                videoRepository = videoRepository,
+                coroutineScope = coroutineScope,
+                onRequestAddVideos = { requestPin(PinAction.ADD_VIDEOS) },
+                onPlayVideo = { pendingPlayIndex = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (videoUris.isNotEmpty()) {
-                    Text(
-                        text = "Видео (${videoUris.size}):",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    // Selection status
-                    val selectedCount = selectedVideos.size
-                    Text(
-                        text = "Выбрано: $selectedCount",
-                        fontSize = 14.sp,
-                        color = if (selectedCount > 0) GreenPrimary else Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-
-                if (videoUris.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Нажмите, чтобы выбрать видео",
-                            color = FolderBlue,
-                            fontSize = 18.sp,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier
-                                .clickable { requestPin(PinAction.ADD_VIDEOS) }
-                                .padding(16.dp)
-                        )
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
-                        // Transform flat URI list into grouped entries
-                        val groupedEntries = remember(videoUris, expandedFolders) {
-                            groupVideosByFolder(videoUris, expandedFolders)
-                        }
-
-                        LazyColumn(
-                            state = videoListState,
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            itemsIndexed(groupedEntries) { _, entry ->
-                                when (entry) {
-                                    is VideoListEntry.FolderHeader -> {
-                                        val (selectedCount, totalCount) = getSelectedCountInFolder(entry.folderPath, videoUris, selectedVideos)
-                                        FolderHeaderItem(
-                                            folderName = entry.folderName,
-                                            isExpanded = entry.isExpanded,
-                                            isSelected = areAllVideosInFolderSelected(entry.folderPath, videoUris, selectedVideos),
-                                            selectedCount = selectedCount,
-                                            totalCount = totalCount,
-                                            onToggle = {
-                                                val updatedFolders = if (entry.isExpanded) {
-                                                    expandedFolders - entry.folderPath
-                                                } else {
-                                                    expandedFolders + entry.folderPath
-                                                }
-                                                coroutineScope.launch {
-                                                    videoRepository.saveExpandedFolders(updatedFolders)
-                                                }
-                                            },
-                                            onToggleSelection = {
-                                                coroutineScope.launch {
-                                                    toggleAllVideosInFolder(entry.folderPath, videoRepository, videoUris, selectedVideos)
-                                                }
-                                            }
-                                        )
-                                    }
-                                    is VideoListEntry.VideoEntry -> VideoListItem(
-                                        index = entry.originalIndex,
-                                        uriString = entry.uriString,
-                                        isSelected = selectedVideos.contains(entry.uriString),
-                                        onClick = { pendingPlayIndex = entry.originalIndex },
-                                        onToggleSelection = {
-                                            coroutineScope.launch {
-                                                videoRepository.toggleVideoSelection(entry.uriString)
-                                            }
-                                        },
-                                        onRemove = {
-                                            coroutineScope.launch {
-                                                videoRepository.removeVideoUri(entry.uriString)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        VerticalScrollbar(state = videoListState)
-                    }
-                }
+                DashboardVideoList(
+                    videoUris = videoUris,
+                    expandedFolders = expandedFolders,
+                    selectedVideos = selectedVideos,
+                    videoListState = videoListState,
+                    videoRepository = videoRepository,
+                    coroutineScope = coroutineScope,
+                    onRequestAddVideos = { requestPin(PinAction.ADD_VIDEOS) },
+                    onPlayVideo = { pendingPlayIndex = it },
+                    modifier = Modifier.weight(1f)
+                )
+                DashboardActionButtons(
+                    videoCount = videoUris.size,
+                    horizontal = false,
+                    onBackToKidMode = onBackToKidMode,
+                    onAddVideos = { requestPin(PinAction.ADD_VIDEOS) },
+                    onClearAll = { showClearAllDialog = true },
+                    onExitKiosk = { requestPin(PinAction.EXIT) }
+                )
             }
+        }
+    }
+}
 
-            // Right side: buttons stacked vertically, all same size, no icons
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+@Composable
+private fun DashboardActionButtons(
+    videoCount: Int,
+    horizontal: Boolean,
+    onBackToKidMode: () -> Unit,
+    onAddVideos: () -> Unit,
+    onClearAll: () -> Unit,
+    onExitKiosk: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (horizontal) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            DashboardActionButton(
+                text = "Назад",
+                onClick = onBackToKidMode,
+                backgroundColor = GreenPrimary,
+                fillWidth = true,
+                modifier = Modifier.weight(1f)
+            )
+            DashboardActionButton(
+                text = "Добавить",
+                onClick = onAddVideos,
+                backgroundColor = FolderBlue,
+                fillWidth = true,
+                modifier = Modifier.weight(1f)
+            )
+            DashboardActionButton(
+                text = "Удалить все",
+                onClick = { if (videoCount > 0) onClearAll() },
+                backgroundColor = if (videoCount > 0) RedButton else Color.Gray,
+                textColor = if (videoCount > 0) Color.White else Color.White.copy(alpha = 0.4f),
+                fillWidth = true,
+                modifier = Modifier.weight(1f)
+            )
+            DashboardActionButton(
+                text = "Снять киоск",
+                onClick = onExitKiosk,
+                backgroundColor = ExitRed,
+                fillWidth = true,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    } else {
+        Column(
+            modifier = modifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            DashboardActionButton(
+                text = "Назад",
+                onClick = onBackToKidMode,
+                backgroundColor = GreenPrimary
+            )
+            DashboardActionButton(
+                text = "Добавить",
+                onClick = onAddVideos,
+                backgroundColor = FolderBlue
+            )
+            DashboardActionButton(
+                text = "Удалить все",
+                onClick = { if (videoCount > 0) onClearAll() },
+                backgroundColor = if (videoCount > 0) RedButton else Color.Gray,
+                textColor = if (videoCount > 0) Color.White else Color.White.copy(alpha = 0.4f)
+            )
+            DashboardActionButton(
+                text = "Снять киоск",
+                onClick = onExitKiosk,
+                backgroundColor = ExitRed
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardActionButton(
+    text: String,
+    onClick: () -> Unit,
+    backgroundColor: Color,
+    textColor: Color = Color.White,
+    fillWidth: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    BounceButton(
+        text = text,
+        onClick = onClick,
+        backgroundColor = backgroundColor,
+        textColor = textColor,
+        width = if (fillWidth) Dp.Unspecified else BUTTON_WIDTH,
+        height = BUTTON_HEIGHT,
+        fontSize = BUTTON_FONT_SIZE,
+        modifier = if (fillWidth) modifier.fillMaxWidth() else modifier
+    )
+}
+
+@Composable
+private fun DashboardVideoList(
+    videoUris: List<String>,
+    expandedFolders: Set<String>,
+    selectedVideos: Set<String>,
+    videoListState: LazyListState,
+    videoRepository: VideoRepository,
+    coroutineScope: CoroutineScope,
+    onRequestAddVideos: () -> Unit,
+    onPlayVideo: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        if (videoUris.isNotEmpty()) {
+            Text(
+                text = "Видео (${videoUris.size}):",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+
+            val selectedCount = selectedVideos.size
+            Text(
+                text = "Выбрано: $selectedCount",
+                fontSize = 14.sp,
+                color = if (selectedCount > 0) GreenPrimary else Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+
+        if (videoUris.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                BounceButton(
-                    text = "Назад",
-                    onClick = onBackToKidMode,
-                    backgroundColor = GreenPrimary,
-                    textColor = Color.White,
-                    width = BUTTON_SIZE,
-                    height = BUTTON_HEIGHT,
-                    fontSize = 14.sp
+                Text(
+                    text = "Нажмите, чтобы выбрать видео",
+                    color = FolderBlue,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clickable { onRequestAddVideos() }
+                        .padding(16.dp)
                 )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                val groupedEntries = remember(videoUris, expandedFolders) {
+                    groupVideosByFolder(videoUris, expandedFolders)
+                }
 
-                BounceButton(
-                    text = "Добавить",
-                    onClick = { requestPin(PinAction.ADD_VIDEOS) },
-                    backgroundColor = FolderBlue,
-                    textColor = Color.White,
-                    width = BUTTON_SIZE,
-                    height = BUTTON_HEIGHT,
-                    fontSize = 14.sp
-                )
-
-                // "Удалить все" — active when videos exist, greyed out otherwise
-                BounceButton(
-                    text = "Удалить все",
-                    onClick = { if (videoUris.isNotEmpty()) showClearAllDialog = true },
-                    backgroundColor = if (videoUris.isNotEmpty()) RedButton else Color.Gray,
-                    textColor = if (videoUris.isNotEmpty()) Color.White else Color.White.copy(alpha = 0.4f),
-                    width = BUTTON_SIZE,
-                    height = BUTTON_HEIGHT,
-                    fontSize = 14.sp
-                )
-
-                BounceButton(
-                    text = "Снять киоск",
-                    onClick = { requestPin(PinAction.EXIT) },
-                    backgroundColor = ExitRed,
-                    textColor = Color.White,
-                    width = BUTTON_SIZE,
-                    height = BUTTON_HEIGHT,
-                    fontSize = 14.sp
-                )
+                LazyColumn(
+                    state = videoListState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    itemsIndexed(groupedEntries) { _, entry ->
+                        when (entry) {
+                            is VideoListEntry.FolderHeader -> {
+                                val (selectedCount, totalCount) = getSelectedCountInFolder(
+                                    entry.folderPath,
+                                    videoUris,
+                                    selectedVideos
+                                )
+                                FolderHeaderItem(
+                                    folderName = entry.folderName,
+                                    isExpanded = entry.isExpanded,
+                                    isSelected = areAllVideosInFolderSelected(
+                                        entry.folderPath,
+                                        videoUris,
+                                        selectedVideos
+                                    ),
+                                    selectedCount = selectedCount,
+                                    totalCount = totalCount,
+                                    onToggle = {
+                                        val updatedFolders = if (entry.isExpanded) {
+                                            expandedFolders - entry.folderPath
+                                        } else {
+                                            expandedFolders + entry.folderPath
+                                        }
+                                        coroutineScope.launch {
+                                            videoRepository.saveExpandedFolders(updatedFolders)
+                                        }
+                                    },
+                                    onToggleSelection = {
+                                        coroutineScope.launch {
+                                            toggleAllVideosInFolder(
+                                                entry.folderPath,
+                                                videoRepository,
+                                                videoUris,
+                                                selectedVideos
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                            is VideoListEntry.VideoEntry -> VideoListItem(
+                                index = entry.originalIndex,
+                                uriString = entry.uriString,
+                                isSelected = selectedVideos.contains(entry.uriString),
+                                onClick = { onPlayVideo(entry.originalIndex) },
+                                onToggleSelection = {
+                                    coroutineScope.launch {
+                                        videoRepository.toggleVideoSelection(entry.uriString)
+                                    }
+                                },
+                                onRemove = {
+                                    coroutineScope.launch {
+                                        videoRepository.removeVideoUri(entry.uriString)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                VerticalScrollbar(state = videoListState)
             }
         }
     }

@@ -33,8 +33,13 @@ fun BounceButton(
     fontSize: TextUnit = 28.sp,
     modifier: Modifier = Modifier
 ) {
-    val buttonWidth = if (width != Dp.Unspecified) width else size
-    val buttonHeight = if (height != Dp.Unspecified) height else size
+    val resolvedHeight = if (height != Dp.Unspecified) height else size
+    val sizeModifier = when {
+        width != Dp.Unspecified && height != Dp.Unspecified -> Modifier.width(width).height(height)
+        width != Dp.Unspecified -> Modifier.width(width).height(resolvedHeight)
+        height != Dp.Unspecified -> Modifier.height(height)
+        else -> Modifier.size(size)
+    }
 
     var isPressed by remember { mutableStateOf(false) }
     val combinedScale = rememberKidButtonScale(isPressed)
@@ -47,9 +52,7 @@ fun BounceButton(
     }
 
     Surface(
-        modifier = modifier
-            .width(buttonWidth)
-            .height(buttonHeight)
+        modifier = modifier.then(sizeModifier)
             .graphicsLayer {
                 scaleX = combinedScale
                 scaleY = combinedScale
