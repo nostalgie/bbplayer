@@ -56,6 +56,17 @@ class AppState(
         isLockTaskActive = false
         onSuspendKiosk()
     }
+
+    companion object {
+        internal fun encodeForSave(isLockTaskActive: Boolean, exitingToHome: Boolean): List<String> =
+            listOf(
+                if (isLockTaskActive) "1" else "0",
+                if (exitingToHome) "1" else "0"
+            )
+
+        internal fun decodeExitingToHome(saved: List<String>, suspendedFromKiosk: Boolean): Boolean =
+            saved.getOrNull(1) == "1" || suspendedFromKiosk
+    }
 }
 
 @Composable
@@ -65,13 +76,14 @@ fun rememberAppState(
     videoLibraryService: VideoLibraryService,
     videoPlayerManager: VideoPlayerManager,
     playbackStateRepository: PlaybackStateRepository,
+    suspendedFromKiosk: Boolean,
     onEnterKidMode: () -> Unit,
     onExitKidMode: () -> Unit,
     onSuspendKiosk: () -> Unit
 ): AppState {
     return rememberSaveable(
         saver = listSaver(
-            save = { listOf(if (it.isLockTaskActive) "1" else "0") },
+            save = { AppState.encodeForSave(it.isLockTaskActive, it.exitingToHome) },
             restore = { saved ->
                 AppState(
                     lockTaskManager = lockTaskManager,
@@ -84,6 +96,7 @@ fun rememberAppState(
                     onSuspendKiosk = onSuspendKiosk
                 ).also { state ->
                     state.isLockTaskActive = saved[0] == "1"
+                    state.exitingToHome = AppState.decodeExitingToHome(saved, suspendedFromKiosk)
                 }
             }
         )
@@ -97,6 +110,8 @@ fun rememberAppState(
             onEnterKidMode = onEnterKidMode,
             onExitKidMode = onExitKidMode,
             onSuspendKiosk = onSuspendKiosk
-        )
+        ).also { state ->
+            state.exitingToHome = suspendedFromKiosk
+        }
     }
 }

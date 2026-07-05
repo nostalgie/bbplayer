@@ -45,4 +45,26 @@ class AppStateTest {
 
         assertThat(state.kioskPausedForParent).isTrue()
     }
+
+    @Test
+    fun encodeForSave_persistsLockTaskAndExitingFlags() {
+        assertThat(AppState.encodeForSave(isLockTaskActive = true, exitingToHome = true))
+            .containsExactly("1", "1")
+        assertThat(AppState.encodeForSave(isLockTaskActive = false, exitingToHome = false))
+            .containsExactly("0", "0")
+    }
+
+    @Test
+    fun decodeExitingToHome_restoresFromSaver() {
+        assertThat(AppState.decodeExitingToHome(listOf("0", "1"), suspendedFromKiosk = false))
+            .isTrue()
+        assertThat(AppState.decodeExitingToHome(listOf("0", "0"), suspendedFromKiosk = false))
+            .isFalse()
+    }
+
+    @Test
+    fun decodeExitingToHome_usesProcessFlagWhenSaverMissing() {
+        assertThat(AppState.decodeExitingToHome(listOf("0"), suspendedFromKiosk = true))
+            .isTrue()
+    }
 }

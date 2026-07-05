@@ -3,6 +3,7 @@ package com.dima.kidsvideoplayer
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.OrientationEventListener
 import android.view.WindowInsetsController
@@ -24,6 +25,7 @@ import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.navigation.AppNavHost
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
+import com.dima.kidsvideoplayer.utils.LauncherHelper
 import com.dima.kidsvideoplayer.utils.OrientationHelper
 import com.dima.kidsvideoplayer.utils.StoragePermissionHelper
 import com.dima.kidsvideoplayer.ui.theme.KidsVideoPlayerTheme
@@ -47,12 +49,14 @@ class MainActivity : ComponentActivity() {
     private var appState: AppState? = null
     private var startupOrientationListener: OrientationEventListener? = null
     private var attemptedOrientationRecreate = false
+    private var lastHomeRedirectElapsed = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         attemptedOrientationRecreate =
             savedInstanceState?.getBoolean(STATE_ORIENTATION_RECREATED) == true
         OrientationHelper.lockToDisplayRotation(this)
         super.onCreate(savedInstanceState)
+        handleLaunchIntent(intent)
 
         val appContext = applicationContext
         lockTaskManager = LockTaskManager(appContext)
@@ -90,6 +94,7 @@ class MainActivity : ComponentActivity() {
                         videoLibraryService = videoLibraryService,
                         videoPlayerManager = videoPlayerManager,
                         playbackStateRepository = playbackStateRepository,
+                        suspendedFromKiosk = app.suspendedFromKiosk,
                         onEnterKidMode = { enterKidMode() },
                         onExitKidMode = { exitKidMode() },
                         onSuspendKiosk = { suspendKiosk() }
@@ -114,6 +119,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleLaunchIntent(intent)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -177,10 +183,38 @@ class MainActivity : ComponentActivity() {
 
     private fun suspendKiosk() {
         Log.d(TAG, "Suspending kiosk — returning to home (Device Owner retained)")
+        app.suspendedFromKiosk = true
+        appState?.exitingToHome = true
         exitKidMode()
         lockTaskManager.removeKioskPolicies()
-        moveTaskToBack(true)
-        finish()
+        launchSystemHomeOnce()
+    }
+
+    private fun handleLaunchIntent(intent: Intent?) {
+        if (intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true) {
+            app.suspendedFromKiosk = false
+            app.cachedExternalLauncher = null
+            appState?.exitingToHome = false
+            return
+        }
+        if (app.suspendedFromKiosk && LauncherHelper.isHomeOnlyIntent(intent)) {
+            Log.d(TAG, "HOME intent while suspended — forwarding to system launcher")
+            appState?.exitingToHome = true
+            launchSystemHomeOnce()
+        }
+    }
+
+    private fun launchSystemHomeOnce() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastHomeRedirectElapsed < HOME_REDIRECT_COOLDOWN_MS) {
+            Log.d(TAG, "Skipping duplicate home redirect")
+            return
+        }
+        lastHomeRedirectElapsed = now
+        app.cachedExternalLauncher = LauncherHelper.launchSystemHome(
+            this,
+            app.cachedExternalLauncher
+        ) ?: app.cachedExternalLauncher
     }
 
     private fun savePlaybackState() {
@@ -233,5 +267,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val STATE_ORIENTATION_RECREATED = "orientation_recreated"
+        private const val HOME_REDIRECT_COOLDOWN_MS = 2_000L
     }
 }
