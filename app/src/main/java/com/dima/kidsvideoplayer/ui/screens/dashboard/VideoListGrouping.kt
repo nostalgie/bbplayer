@@ -1,103 +1,60 @@
 package com.dima.kidsvideoplayer.ui.screens.dashboard
 
-import com.dima.kidsvideoplayer.utils.calculateFolderDepths
-import com.dima.kidsvideoplayer.utils.groupVideosByFolderData
+import com.dima.kidsvideoplayer.data.VideoEntry
+import com.dima.kidsvideoplayer.utils.abbreviateFolderPath
 
 sealed interface VideoListEntry {
     data class FolderHeader(
         val folderName: String,
         val folderPath: String,
-        val depth: Int,
-        val isExpanded: Boolean
+        val isExpanded: Boolean,
+        val videoCount: Int
     ) : VideoListEntry
 
-    data class VideoEntry(
+    data class VideoEntryItem(
         val uriString: String,
         val fileName: String,
         val originalIndex: Int
     ) : VideoListEntry
 }
 
-fun groupVideosByFolder(
-    uris: List<String>,
-    expandedFolders: Set<String> = emptySet()
+fun groupLibraryByWatchedFolder(
+    videos: List<VideoEntry>,
+    watchedFolders: List<String>,
+    expandedFolders: Set<String>
 ): List<VideoListEntry> {
-    if (uris.isEmpty()) return emptyList()
+    if (watchedFolders.isEmpty()) return emptyList()
 
-    val grouped = groupVideosByFolderData(uris)
-    val sortedFolderPaths = grouped.folderMap.keys.sorted()
-    val folderDepths = calculateFolderDepths(sortedFolderPaths)
-    val uriIndexMap = uris.withIndex().associate { (index, uri) -> uri to index }
-
+    val videosByFolder = videos.groupBy { it.sourceFolder }
+    val uriIndexMap = videos.withIndex().associate { (index, entry) -> entry.uriString to index }
     val result = mutableListOf<VideoListEntry>()
 
-    sortedFolderPaths.forEach { folderPath ->
+    watchedFolders.sorted().forEach { folderPath ->
+        val folderVideos = videosByFolder[folderPath].orEmpty()
         result.add(
             VideoListEntry.FolderHeader(
-                folderName = folderPath,
+                folderName = abbreviateFolderPath(folderPath),
                 folderPath = folderPath,
-                depth = folderDepths[folderPath] ?: 0,
-                isExpanded = expandedFolders.contains(folderPath)
+                isExpanded = expandedFolders.contains(folderPath),
+                videoCount = folderVideos.size
             )
         )
 
         if (expandedFolders.contains(folderPath)) {
-            grouped.folderMap[folderPath]?.forEach { (uriString, fileName) ->
+            folderVideos.sortedBy { it.fileName.lowercase() }.forEach { entry ->
                 result.add(
-                    VideoListEntry.VideoEntry(
-                        uriString = uriString,
-                        fileName = fileName,
-                        originalIndex = uriIndexMap[uriString] ?: 0
+                    VideoListEntry.VideoEntryItem(
+                        uriString = entry.uriString,
+                        fileName = entry.fileName,
+                        originalIndex = uriIndexMap[entry.uriString] ?: 0
                     )
                 )
             }
         }
     }
 
-    if (grouped.ungroupedFiles.isNotEmpty()) {
-        result.add(
-            VideoListEntry.FolderHeader(
-                folderName = "Другие",
-                folderPath = "other",
-                depth = 0,
-                isExpanded = true
-            )
-        )
-        grouped.ungroupedFiles.forEach { (uriString, fileName) ->
-            result.add(
-                VideoListEntry.VideoEntry(
-                    uriString = uriString,
-                    fileName = fileName,
-                    originalIndex = uriIndexMap[uriString] ?: 0
-                )
-            )
-        }
-    }
-
     return result
 }
 
-fun areAllVideosInFolderSelected(
-    folderPath: String,
-    videoUris: List<String>,
-    selectedVideos: Set<String>
-): Boolean {
-    val grouped = groupVideosByFolderData(videoUris)
-    val videosInFolder = grouped.folderMap[folderPath] ?: return false
-    return videosInFolder.isNotEmpty() && videosInFolder.all { (uri, _) -> uri in selectedVideos }
-}
-
-fun getSelectedCountInFolder(
-    folderPath: String,
-    videoUris: List<String>,
-    selectedVideos: Set<String>
-): Pair<Int, Int> {
-    val videosInFolder = getVideosInFolder(folderPath, videoUris)
-    val selectedCount = videosInFolder.count { it in selectedVideos }
-    return selectedCount to videosInFolder.size
-}
-
-fun getVideosInFolder(folderPath: String, videoUris: List<String>): List<String> {
-    val grouped = groupVideosByFolderData(videoUris)
-    return grouped.folderMap[folderPath]?.map { (uri, _) -> uri } ?: emptyList()
-}
+fun isFolderSelected(folderPath: String, selectedFolders: Set<String>): Boolean =
+    folderPath in selectedFolders

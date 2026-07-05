@@ -1,6 +1,5 @@
 package com.dima.kidsvideoplayer.ui.screens
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -20,6 +19,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.videolan.libvlc.util.VLCVideoLayout
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
+import com.dima.kidsvideoplayer.data.VideoLibraryService
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.screens.kidplayer.PlayerControlsOverlay
@@ -29,6 +29,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun KidPlayerScreen(
     videoRepository: VideoRepository,
+    videoLibraryService: VideoLibraryService,
     videoPlayerManager: VideoPlayerManager,
     playbackStateRepository: PlaybackStateRepository,
     onSecretDoorActivated: () -> Unit,
@@ -36,21 +37,42 @@ fun KidPlayerScreen(
     onPendingIndexConsumed: () -> Unit = {}
 ) {
     val secretDoorTouchSizePx = with(LocalDensity.current) { 72.dp.toPx() }
-    val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
-    val selectedVideos by videoRepository.selectedVideos.collectAsStateWithLifecycle(initialValue = emptySet())
+    val selectedFolders by videoRepository.selectedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
+    val libraryState by videoLibraryService.libraryState.collectAsStateWithLifecycle()
+    val watchedFolders by videoRepository.watchedFolders.collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val filteredVideoUris = remember(videoUris, selectedVideos) {
-        if (selectedVideos.isEmpty()) emptyList()
-        else videoUris.filter { selectedVideos.contains(it) }
+    val playableUris = remember(libraryState.videos, selectedFolders) {
+        if (selectedFolders.isEmpty()) emptyList()
+        else libraryState.videos
+            .filter { it.sourceFolder in selectedFolders }
+            .map { it.uriString }
+    }
+
+    LaunchedEffect(libraryState.uriMigrations) {
+        libraryState.uriMigrations.forEach { (oldUri, newUri) ->
+            playbackStateRepository.migrateUri(oldUri, newUri)
+        }
     }
 
     var hasRestoredState by remember { mutableStateOf(false) }
+    var initialSetupDone by remember { mutableStateOf(false) }
 
-    LaunchedEffect(filteredVideoUris, pendingStartVideoIndex) {
+    LaunchedEffect(playableUris, pendingStartVideoIndex, libraryState.lastScanTime) {
         videoPlayerManager.initialize()
 
-        if (filteredVideoUris.isEmpty()) {
+        if (playableUris.isEmpty()) {
             videoPlayerManager.setVideoList(emptyList())
+            return@LaunchedEffect
+        }
+
+        val currentUri = videoPlayerManager.getCurrentVideoUri()
+        if (initialSetupDone && currentUri != null && currentUri in playableUris) {
+            val newIndex = playableUris.indexOf(currentUri)
+            videoPlayerManager.setVideoList(
+                playableUris,
+                newIndex,
+                videoPlayerManager.currentPosition
+            )
             return@LaunchedEffect
         }
 
@@ -58,14 +80,17 @@ fun KidPlayerScreen(
         val startPositionMs: Long
 
         if (pendingStartVideoIndex >= 0) {
-            startIndex = pendingStartVideoIndex.coerceIn(0, filteredVideoUris.lastIndex)
+            startIndex = pendingStartVideoIndex.coerceIn(0, playableUris.lastIndex)
             startPositionMs = 0L
             onPendingIndexConsumed()
+            hasRestoredState = true
+            initialSetupDone = true
         } else if (!hasRestoredState) {
             hasRestoredState = true
+            initialSetupDone = true
             val saved = playbackStateRepository.get()
             if (saved != null) {
-                val savedIndex = filteredVideoUris.indexOf(saved.videoUri)
+                val savedIndex = playableUris.indexOf(saved.videoUri)
                 if (savedIndex >= 0) {
                     startIndex = savedIndex
                     startPositionMs = saved.positionMs
@@ -79,11 +104,10 @@ fun KidPlayerScreen(
                 startPositionMs = 0L
             }
         } else {
-            startIndex = 0
-            startPositionMs = 0L
+            return@LaunchedEffect
         }
 
-        videoPlayerManager.setVideoList(filteredVideoUris, startIndex, startPositionMs)
+        videoPlayerManager.setVideoList(playableUris, startIndex, startPositionMs)
     }
 
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -122,15 +146,15 @@ fun KidPlayerScreen(
         }
     }
 
-    LaunchedEffect(videoPlayerManager, filteredVideoUris) {
-        if (filteredVideoUris.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(videoPlayerManager, playableUris) {
+        if (playableUris.isEmpty()) return@LaunchedEffect
         while (true) {
             delay(5_000L)
             val currentIndex = videoPlayerManager.currentMediaItemIndex
-            if (currentIndex in filteredVideoUris.indices) {
+            if (currentIndex in playableUris.indices) {
                 playbackStateRepository.save(
                     PlaybackStateRepository.PlaybackState(
-                        videoUri = filteredVideoUris[currentIndex],
+                        videoUri = playableUris[currentIndex],
                         positionMs = videoPlayerManager.currentPosition
                     )
                 )
@@ -154,7 +178,7 @@ fun KidPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (filteredVideoUris.isNotEmpty()) {
+        if (playableUris.isNotEmpty()) {
             AndroidView(
                 factory = { ctx -> VLCVideoLayout(ctx) },
                 update = { layout ->
@@ -173,10 +197,10 @@ fun KidPlayerScreen(
         } else {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = if (videoUris.isEmpty()) {
-                        "🎬 Нет видео\n\nРодитель может добавить видео\nчерез настройки"
+                    text = if (watchedFolders.isEmpty()) {
+                        "🎬 Нет видео\n\nРодитель может добавить папки\nчерез настройки"
                     } else {
-                        "🎬 Нет выбранных видео\n\nПожалуйста, выберите видео\nв настройках родителя"
+                        "🎬 Нет выбранных папок\n\nПожалуйста, выберите папки\nв настройках родителя"
                     },
                     color = Color.White,
                     fontSize = 20.sp,
@@ -196,7 +220,7 @@ fun KidPlayerScreen(
             )
         }
 
-        if (filteredVideoUris.isNotEmpty()) {
+        if (playableUris.isNotEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -218,7 +242,7 @@ fun KidPlayerScreen(
 
             PlayerControlsOverlay(
                 visible = controlsVisible,
-                filteredVideoCount = filteredVideoUris.size,
+                filteredVideoCount = playableUris.size,
                 isPlaying = isPlaying,
                 sliderValue = sliderValue,
                 onSliderChange = { newValue ->
@@ -265,5 +289,3 @@ fun KidPlayerScreen(
         )
     }
 }
-
-private const val TAG = "KidPlayerScreen"

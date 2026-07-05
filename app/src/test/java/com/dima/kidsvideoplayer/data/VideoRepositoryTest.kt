@@ -1,9 +1,5 @@
 /**
- * Tests for [VideoRepository] — verifies DataStore-backed CRUD operations
- * for video URI persistence (add, batch-add with dedup, remove, clear).
- *
- * Uses Robolectric to provide a real Android Context so that
- * DataStore Preferences works without an emulator.
+ * Tests for [VideoRepository] — watched folders, selection, and legacy migration.
  */
 package com.dima.kidsvideoplayer.data
 
@@ -27,191 +23,94 @@ class VideoRepositoryTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         repository = VideoRepository(context)
-        // Clear any leftover data from previous tests
         runBlocking { repository.clearAll() }
     }
 
     @Test
-    fun videoUris_emitsEmptyListInitially() = runBlocking {
-        val uris = repository.videoUris.first()
-        assertThat(uris).isEmpty()
-    }
-
-    @Test
-    fun addVideoUri_addsASingleUri() {
+    fun watchedFolders_emitsEmptyListInitially() {
         runBlocking {
-            repository.addVideoUri("content://video/1")
-            val uris = repository.videoUris.first()
-            assertThat(uris).containsExactly("content://video/1")
+            assertThat(repository.watchedFolders.first()).isEmpty()
         }
     }
 
     @Test
-    fun addVideoUri_appendsToExistingList() = runBlocking {
-        repository.addVideoUri("content://video/1")
-        repository.addVideoUri("content://video/2")
-        val uris = repository.videoUris.first()
-        assertThat(uris).containsExactly("content://video/1", "content://video/2").inOrder()
-    }
-
-    @Test
-    fun addVideoUris_addsMultipleUrisWithDeduplication() = runBlocking {
-        repository.addVideoUri("content://video/1")
-        repository.addVideoUris(listOf("content://video/1", "content://video/2", "content://video/3"))
-        val uris = repository.videoUris.first()
-        assertThat(uris).containsExactly(
-            "content://video/1",
-            "content://video/2",
-            "content://video/3"
-        ).inOrder()
-    }
-
-    @Test
-    fun addVideoUris_withEmptyList_doesNothing() {
+    fun addWatchedFolder_addsASingleFolder() {
         runBlocking {
-            repository.addVideoUri("content://video/1")
-            repository.addVideoUris(emptyList())
-            val uris = repository.videoUris.first()
-            assertThat(uris).containsExactly("content://video/1")
+            repository.addWatchedFolder("/storage/emulated/0/Movies")
+            assertThat(repository.watchedFolders.first())
+                .containsExactly("/storage/emulated/0/Movies")
         }
     }
 
     @Test
-    fun addVideoUris_deduplicatesCaseSensitive() = runBlocking {
-        repository.addVideoUri("content://video/A")
-        repository.addVideoUris(listOf("content://video/a"))
-        val uris = repository.videoUris.first()
-        assertThat(uris).containsExactly("content://video/A", "content://video/a").inOrder()
-    }
-
-    @Test
-    fun removeVideoUri_removesTheSpecifiedUri() = runBlocking {
-        repository.addVideoUris(listOf("content://video/1", "content://video/2", "content://video/3"))
-        repository.removeVideoUri("content://video/2")
-        val uris = repository.videoUris.first()
-        assertThat(uris).containsExactly("content://video/1", "content://video/3").inOrder()
-    }
-
-    @Test
-    fun removeVideoUri_onNonExistentUri_doesNothing() = runBlocking {
-        repository.addVideoUris(listOf("content://video/1", "content://video/2"))
-        repository.removeVideoUri("content://nonexistent")
-        val uris = repository.videoUris.first()
-        assertThat(uris).containsExactly("content://video/1", "content://video/2").inOrder()
-    }
-
-    @Test
-    fun removeVideoUri_onEmptyList_doesNothing() = runBlocking {
-        repository.removeVideoUri("content://video/1")
-        val uris = repository.videoUris.first()
-        assertThat(uris).isEmpty()
-    }
-
-    @Test
-    fun clearAll_removesAllUris() = runBlocking {
-        repository.addVideoUris(listOf("content://video/1", "content://video/2"))
-        repository.clearAll()
-        val uris = repository.videoUris.first()
-        assertThat(uris).isEmpty()
-    }
-
-    @Test
-    fun clearAll_onAlreadyEmptyStore_doesNotThrow() = runBlocking {
-        repository.clearAll()
-        val uris = repository.videoUris.first()
-        assertThat(uris).isEmpty()
-    }
-
-    @Test
-    fun addAfterClear_worksCorrectly() {
+    fun addWatchedFolders_addsMultipleWithDeduplication() {
         runBlocking {
-            repository.addVideoUris(listOf("content://video/1", "content://video/2"))
+            repository.addWatchedFolder("/storage/emulated/0/Movies")
+            repository.addWatchedFolders(
+                listOf("/storage/emulated/0/Movies", "/storage/emulated/0/Anime")
+            )
+            assertThat(repository.watchedFolders.first()).containsExactly(
+                "/storage/emulated/0/Movies",
+                "/storage/emulated/0/Anime"
+            ).inOrder()
+        }
+    }
+
+    @Test
+    fun removeWatchedFolder_removesFolderAndSelection() {
+        runBlocking {
+            val folder = "/storage/emulated/0/Movies"
+            repository.addWatchedFolder(folder)
+            repository.toggleFolderSelection(folder)
+            repository.removeWatchedFolder(folder)
+            assertThat(repository.watchedFolders.first()).isEmpty()
+            assertThat(repository.selectedFolders.first()).isEmpty()
+        }
+    }
+
+    @Test
+    fun clearAll_removesFoldersAndSelection() {
+        runBlocking {
+            repository.addWatchedFolder("/storage/emulated/0/Movies")
+            repository.toggleFolderSelection("/storage/emulated/0/Movies")
             repository.clearAll()
-            repository.addVideoUri("content://video/3")
-            val uris = repository.videoUris.first()
-            assertThat(uris).containsExactly("content://video/3")
+            assertThat(repository.watchedFolders.first()).isEmpty()
+            assertThat(repository.selectedFolders.first()).isEmpty()
         }
     }
 
-    // --- New tests for JSON array format and migration ---
-
     @Test
-    fun addVideoUri_uriWithPipeCharacter_storedCorrectly() {
+    fun selectedFolders_emitsEmptyInitially() {
         runBlocking {
-            val uriWithPipe = "content://com.provider/document|segment"
-            repository.addVideoUri(uriWithPipe)
-            val uris = repository.videoUris.first()
-            assertThat(uris).containsExactly(uriWithPipe)
+            assertThat(repository.selectedFolders.first()).isEmpty()
         }
     }
 
     @Test
-    fun addVideoUri_uriWithSpecialChars_storedCorrectly() = runBlocking {
-        val uriWithQuotes = "content://com.provider/doc\"name"
-        val uriWithBackslash = "content://com.provider/doc\\path"
-        val uriWithUnicode = "content://com.provider/видео"
-        repository.addVideoUris(listOf(uriWithQuotes, uriWithBackslash, uriWithUnicode))
-        val uris = repository.videoUris.first()
-        assertThat(uris).containsExactly(uriWithQuotes, uriWithBackslash, uriWithUnicode).inOrder()
-    }
-
-    @Test
-    fun migration_fromPipeDelimited_readsOldFormat() {
-        // Simulate reading legacy pipe-delimited data
-        val legacy = "content://video/1|content://video/2|content://video/3"
-        val uris = repository.deserialize(legacy)
-        assertThat(uris).containsExactly(
-            "content://video/1",
-            "content://video/2",
-            "content://video/3"
-        ).inOrder()
-    }
-
-    @Test
-    fun migration_afterWrite_dataIsJsonFormat() {
-        // Verify that deserialize reads legacy pipe-delimited format
-        val legacy = "content://video/1|content://video/2"
-        val uris = repository.deserialize(legacy)
-        assertThat(uris).containsExactly("content://video/1", "content://video/2").inOrder()
-
-        // Verify that serialize produces JSON array format
-        val merged = uris + "content://video/3"
-        val jsonOutput = repository.serialize(merged)
-        assertThat(jsonOutput.trimStart()).startsWith("[")
-
-        // Verify the JSON output round-trips through deserialize correctly
-        val roundTripped = repository.deserialize(jsonOutput)
-        assertThat(roundTripped).containsExactly(
-            "content://video/1",
-            "content://video/2",
-            "content://video/3"
-        ).inOrder()
-    }
-
-    @Test
-    fun addVideoUri_persistsWhenReadingFlowBeforeNextAdd() {
+    fun toggleFolderSelection_addsAndRemoves() {
         runBlocking {
-            repository.addVideoUri("file:///video1.mp4")
-            assertThat(repository.videoUris.first()).containsExactly("file:///video1.mp4")
-            repository.addVideoUri("file:///video2.mp4")
-            assertThat(repository.videoUris.first())
-                .containsExactly("file:///video1.mp4", "file:///video2.mp4")
-                .inOrder()
+            val folder = "/storage/emulated/0/Movies"
+            repository.toggleFolderSelection(folder)
+            assertThat(repository.selectedFolders.first()).containsExactly(folder)
+            repository.toggleFolderSelection(folder)
+            assertThat(repository.selectedFolders.first()).isEmpty()
         }
     }
 
     @Test
-    fun addVideoUri_deduplicates() {
+    fun saveSelectedFolders_persistsSelection() {
         runBlocking {
-            repository.addVideoUri("content://video/1")
-            repository.addVideoUri("content://video/1")
-            assertThat(repository.videoUris.first()).containsExactly("content://video/1")
+            val folders = setOf("/storage/emulated/0/Movies", "/storage/emulated/0/Anime")
+            repository.saveSelectedFolders(folders)
+            assertThat(repository.selectedFolders.first()).containsExactlyElementsIn(folders)
         }
     }
 
     @Test
-    fun expandedFolders_emitsEmptyInitially() = runBlocking {
-        assertThat(repository.expandedFolders.first()).isEmpty()
+    fun expandedFolders_emitsEmptyInitially() {
+        runBlocking {
+            assertThat(repository.expandedFolders.first()).isEmpty()
+        }
     }
 
     @Test
@@ -224,26 +123,48 @@ class VideoRepositoryTest {
     }
 
     @Test
-    fun selectedVideos_emitsEmptyInitially() = runBlocking {
-        assertThat(repository.selectedVideos.first()).isEmpty()
-    }
-
-    @Test
-    fun saveSelectedVideos_persistsSelection() {
+    fun migration_fromLegacyVideoUris_createsWatchedFolders() {
         runBlocking {
-            repository.saveSelectedVideos(setOf("content://video/1", "content://video/2"))
-            assertThat(repository.selectedVideos.first())
-                .containsExactly("content://video/1", "content://video/2")
+            repository.setLegacyDataForMigration(
+                videoUris = listOf(
+                    "file:///storage/emulated/0/Movies/a.mp4",
+                    "file:///storage/emulated/0/Movies/b.mp4",
+                    "file:///storage/emulated/0/Anime/c.mp4"
+                ),
+                selectedVideos = setOf(
+                    "file:///storage/emulated/0/Movies/a.mp4",
+                    "file:///storage/emulated/0/Anime/c.mp4"
+                )
+            )
+
+            repository.ensureMigrated()
+
+            assertThat(repository.watchedFolders.first()).containsExactly(
+                "/storage/emulated/0/Movies",
+                "/storage/emulated/0/Anime"
+            )
+            assertThat(repository.selectedFolders.first()).containsExactly(
+                "/storage/emulated/0/Movies",
+                "/storage/emulated/0/Anime"
+            )
         }
     }
 
     @Test
-    fun toggleVideoSelection_addsAndRemoves() {
-        runBlocking {
-            repository.toggleVideoSelection("content://video/1")
-            assertThat(repository.selectedVideos.first()).containsExactly("content://video/1")
-            repository.toggleVideoSelection("content://video/1")
-            assertThat(repository.selectedVideos.first()).isEmpty()
-        }
+    fun migration_legacyPipeDelimited_readsOldFormat() {
+        val legacy = "content://video/1|content://video/2|content://video/3"
+        val uris = repository.deserialize(legacy)
+        assertThat(uris).containsExactly(
+            "content://video/1",
+            "content://video/2",
+            "content://video/3"
+        ).inOrder()
+    }
+
+    @Test
+    fun serialize_deserialize_roundTrip() {
+        val paths = listOf("/storage/a", "/storage/b with space")
+        val json = repository.serialize(paths)
+        assertThat(repository.deserialize(json)).containsExactlyElementsIn(paths)
     }
 }

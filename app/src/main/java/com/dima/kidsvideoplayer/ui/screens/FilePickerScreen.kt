@@ -1,9 +1,7 @@
 package com.dima.kidsvideoplayer.ui.screens
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,11 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.utils.StoragePermissionHelper
 import com.dima.kidsvideoplayer.ui.screens.filepicker.*
@@ -35,16 +32,7 @@ import kotlinx.coroutines.*
 import java.io.File
 
 /**
- * Custom file browser screen for batch video selection.
- *
- * Two-phase selection process:
- *   Phase 1 — user browses and marks files/folders for potential addition.
- *   Phase 2 — user presses "Добавить" and selected files are persisted via VideoRepository.
- *
- * URI scheme: stores `file://` URIs from File.toURI().toString().
- *
- * @param videoRepository Repository for persisting video URIs
- * @param onBack Callback to navigate back to parent dashboard
+ * Custom file browser for adding watched folders to the library.
  */
 @Composable
 fun FilePickerScreen(
@@ -53,6 +41,8 @@ fun FilePickerScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val watchedFolders by videoRepository.watchedFolders.collectAsStateWithLifecycle(initialValue = emptyList())
+    val watchedFolderSet = remember(watchedFolders) { watchedFolders.toSet() }
 
     val hasStoragePermission = remember {
         mutableStateOf(StoragePermissionHelper.hasStoragePermission(context))
@@ -78,11 +68,11 @@ fun FilePickerScreen(
     }
 
     val storageRootPaths = storageVolumes.map { it.path }.toSet()
-    var selectedFiles by remember { mutableStateOf(emptySet<String>()) }
+    var selectedFolders by remember { mutableStateOf(emptySet<String>()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var directoryItems by remember { mutableStateOf<List<FileSystemItem>>(emptyList()) }
-    var folderVideoPaths by remember { mutableStateOf<Map<String, List<String>?>>(emptyMap()) }
+    var folderVideoCounts by remember { mutableStateOf<Map<String, Int?>>(emptyMap()) }
     var scanningFolders by remember { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(currentPath) {
@@ -103,9 +93,9 @@ fun FilePickerScreen(
 
             val dirs = items.filter { it.isDirectory }
             val dirPaths = dirs.map { it.path }.toSet()
-            val loadingMap: Map<String, List<String>?> = dirs.associate { it.path to null }
-            val existingKeep = folderVideoPaths.filterKeys { it !in dirPaths }
-            folderVideoPaths = loadingMap + existingKeep
+            val loadingMap: Map<String, Int?> = dirs.associate { it.path to null }
+            val existingKeep = folderVideoCounts.filterKeys { it !in dirPaths }
+            folderVideoCounts = loadingMap + existingKeep
 
             isLoading = false
 
@@ -114,18 +104,18 @@ fun FilePickerScreen(
                     launch {
                         scanningFolders = scanningFolders + dirItem.path
                         try {
-                            val videos = withContext(Dispatchers.IO) {
-                                findVideosRecursively(File(dirItem.path))
+                            val count = withContext(Dispatchers.IO) {
+                                findVideosRecursively(File(dirItem.path)).size
                             }
-                            folderVideoPaths = folderVideoPaths.toMutableMap().apply {
-                                this[dirItem.path] = videos.map { it.absolutePath }
+                            folderVideoCounts = folderVideoCounts.toMutableMap().apply {
+                                this[dirItem.path] = count
                             }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             Log.w("FilePicker", "Error scanning ${dirItem.path}", e)
-                            folderVideoPaths = folderVideoPaths.toMutableMap().apply {
-                                this[dirItem.path] = emptyList()
+                            folderVideoCounts = folderVideoCounts.toMutableMap().apply {
+                                this[dirItem.path] = 0
                             }
                         } finally {
                             scanningFolders = scanningFolders - dirItem.path
@@ -198,9 +188,7 @@ fun FilePickerScreen(
 
         if (currentPath == STORAGE_ROOT) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -213,7 +201,6 @@ fun FilePickerScreen(
             }
 
             FilePickerBottomBar(
-                selectedFileCount = 0,
                 selectedFolderCount = 0,
                 onConfirm = {},
                 onCancel = onBack
@@ -227,29 +214,15 @@ fun FilePickerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = {
-                    coroutineScope.launch {
-                        val allPaths = mutableSetOf<String>()
-                        allPaths.addAll(selectedFiles)
-                        for (folder in directoryItems.filter { it.isDirectory }) {
-                            val cached = folderVideoPaths[folder.path]
-                            if (cached != null) {
-                                allPaths.addAll(cached)
-                            } else {
-                                val videos = withContext(Dispatchers.IO) {
-                                    findVideosRecursively(File(folder.path))
-                                }
-                                allPaths.addAll(videos.map { it.absolutePath })
-                            }
-                        }
-                        for (file in directoryItems.filter { it.isFile }) {
-                            allPaths.add(file.path)
-                        }
-                        selectedFiles = allPaths.toSet()
-                    }
+                    val selectable = directoryItems
+                        .filter { it.isDirectory }
+                        .map { it.path }
+                        .filter { it !in watchedFolderSet }
+                    selectedFolders = selectable.toSet()
                 }) {
                     Text("Выбрать все", color = GreenPrimary)
                 }
-                TextButton(onClick = { selectedFiles = emptySet() }) {
+                TextButton(onClick = { selectedFolders = emptySet() }) {
                     Text("Снять все", color = RedButton)
                 }
             }
@@ -292,6 +265,8 @@ fun FilePickerScreen(
                 }
             } else {
                 val filePickerListState = rememberLazyListState()
+                val folders = directoryItems.filter { it.isDirectory }
+
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     LazyColumn(
                         state = filePickerListState,
@@ -299,73 +274,32 @@ fun FilePickerScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        val folders = directoryItems.filter { it.isDirectory }
-                        val files = directoryItems.filter { it.isFile }
-
                         items(items = folders, key = { it.path }) { item ->
-                            val cachedPaths = folderVideoPaths[item.path]
-                            val videoCount = cachedPaths?.size
-                            val selectedCount = cachedPaths?.count { it in selectedFiles } ?: 0
-
-                            val toggleableState = when {
-                                item.path in scanningFolders -> ToggleableState.Off
-                                cachedPaths == null -> ToggleableState.Off
-                                cachedPaths.isEmpty() -> ToggleableState.Off
-                                selectedCount == 0 -> ToggleableState.Off
-                                selectedCount >= cachedPaths.size -> ToggleableState.On
-                                else -> ToggleableState.Indeterminate
-                            }
+                            val videoCount = folderVideoCounts[item.path]
+                            val isAlreadyWatched = item.path in watchedFolderSet
+                            val isSelected = item.path in selectedFolders
 
                             FolderItem(
                                 item = item,
                                 videoCount = videoCount,
                                 supportedVideoCount = videoCount,
-                                selectedCount = selectedCount,
-                                toggleableState = toggleableState,
+                                selectedCount = if (isSelected) 1 else 0,
+                                toggleableState = when {
+                                    isAlreadyWatched -> androidx.compose.ui.state.ToggleableState.On
+                                    isSelected -> androidx.compose.ui.state.ToggleableState.On
+                                    else -> androidx.compose.ui.state.ToggleableState.Off
+                                },
                                 isScanning = item.path in scanningFolders,
+                                isAlreadyWatched = isAlreadyWatched,
                                 onSelect = {
-                                    if (item.path in scanningFolders) return@FolderItem
-                                    val paths = cachedPaths
-                                    if (paths != null) {
-                                        if (toggleableState == ToggleableState.On) {
-                                            selectedFiles = selectedFiles - paths.toSet()
-                                        } else {
-                                            selectedFiles = selectedFiles + paths
-                                        }
-                                    } else if (item.path !in scanningFolders) {
-                                        coroutineScope.launch {
-                                            scanningFolders = scanningFolders + item.path
-                                            try {
-                                                val videos = withContext(Dispatchers.IO) {
-                                                    findVideosRecursively(File(item.path))
-                                                }
-                                                val foundPaths = videos.map { it.absolutePath }
-                                                folderVideoPaths = folderVideoPaths.toMutableMap().apply {
-                                                    this[item.path] = foundPaths
-                                                }
-                                                selectedFiles = selectedFiles + foundPaths
-                                            } finally {
-                                                scanningFolders = scanningFolders - item.path
-                                            }
-                                        }
+                                    if (isAlreadyWatched) return@FolderItem
+                                    selectedFolders = if (isSelected) {
+                                        selectedFolders - item.path
+                                    } else {
+                                        selectedFolders + item.path
                                     }
                                 },
                                 onClick = { currentPath = item.path }
-                            )
-                        }
-
-                        items(items = files, key = { it.path }) { item ->
-                            VideoFileItem(
-                                item = item,
-                                isSelected = item.path in selectedFiles,
-                                isSupported = null,
-                                onSelect = {
-                                    selectedFiles = if (item.path in selectedFiles) {
-                                        selectedFiles - item.path
-                                    } else {
-                                        selectedFiles + item.path
-                                    }
-                                }
                             )
                         }
                     }
@@ -373,20 +307,15 @@ fun FilePickerScreen(
                 }
             }
 
-            val selectedFolderCount = folderVideoPaths.entries.count { (_, paths) ->
-                paths != null && paths.isNotEmpty() && paths.all { it in selectedFiles }
-            }
+            val newFolderCount = selectedFolders.count { it !in watchedFolderSet }
 
             FilePickerBottomBar(
-                selectedFileCount = selectedFiles.size,
-                selectedFolderCount = selectedFolderCount,
+                selectedFolderCount = newFolderCount,
                 onConfirm = {
                     coroutineScope.launch {
-                        val uris = selectedFiles.map { path ->
-                            File(path).toURI().toString()
-                        }
-                        if (uris.isNotEmpty()) {
-                            videoRepository.addVideoUris(uris)
+                        val toAdd = selectedFolders.filter { it !in watchedFolderSet }
+                        if (toAdd.isNotEmpty()) {
+                            videoRepository.addWatchedFolders(toAdd)
                         }
                         onBack()
                     }

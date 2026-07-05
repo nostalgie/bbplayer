@@ -53,6 +53,7 @@ fun AppNavHost(
 
             KidPlayerScreen(
                 videoRepository = appState.videoRepository,
+                videoLibraryService = appState.videoLibraryService,
                 videoPlayerManager = appState.videoPlayerManager,
                 playbackStateRepository = appState.playbackStateRepository,
                 onSecretDoorActivated = {
@@ -73,6 +74,7 @@ fun AppNavHost(
 
             ParentDashboardScreen(
                 videoRepository = appState.videoRepository,
+                videoLibraryService = appState.videoLibraryService,
                 onBackToKidMode = {
                     appState.kioskPausedForParent = false
                     appState.videoPlayerManager.play()

@@ -55,6 +55,17 @@ class VideoPathUtilsTest {
     }
 
     @Test
+    fun extractParentFolderPath_returnsAbsoluteFolderForFileUri() {
+        val folder = extractParentFolderPath("file:///storage/emulated/0/Movies/video.mp4")
+        assertThat(folder).isEqualTo("/storage/emulated/0/Movies")
+    }
+
+    @Test
+    fun extractParentFolderPath_returnsNullForNonFileUri() {
+        assertThat(extractParentFolderPath("content://media/video/1")).isNull()
+    }
+
+    @Test
     fun groupVideosByFolderData_groupsByFolder() {
         val uris = listOf(
             "file:///storage/emulated/0/Movies/a.mp4",

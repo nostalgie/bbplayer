@@ -51,6 +51,16 @@ class PlaybackStateRepository(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    /**
+     * Update saved URI when a file was renamed during library scan.
+     */
+    fun migrateUri(oldUri: String, newUri: String) {
+        val current = get() ?: return
+        if (current.videoUri == oldUri) {
+            save(PlaybackState(videoUri = newUri, positionMs = current.positionMs))
+        }
+    }
+
     companion object {
         private const val KEY_VIDEO_URI = "last_video_uri"
         private const val KEY_POSITION_MS = "last_position_ms"

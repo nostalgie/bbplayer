@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
+import com.dima.kidsvideoplayer.data.VideoLibraryService
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 
@@ -19,6 +20,7 @@ import com.dima.kidsvideoplayer.player.VideoPlayerManager
 class AppState(
     val lockTaskManager: LockTaskManager,
     val videoRepository: VideoRepository,
+    val videoLibraryService: VideoLibraryService,
     val videoPlayerManager: VideoPlayerManager,
     val playbackStateRepository: PlaybackStateRepository,
     val onEnterKidMode: () -> Unit,
@@ -56,6 +58,7 @@ class AppState(
 fun rememberAppState(
     lockTaskManager: LockTaskManager,
     videoRepository: VideoRepository,
+    videoLibraryService: VideoLibraryService,
     videoPlayerManager: VideoPlayerManager,
     playbackStateRepository: PlaybackStateRepository,
     onEnterKidMode: () -> Unit,
@@ -69,6 +72,7 @@ fun rememberAppState(
                 AppState(
                     lockTaskManager = lockTaskManager,
                     videoRepository = videoRepository,
+                    videoLibraryService = videoLibraryService,
                     videoPlayerManager = videoPlayerManager,
                     playbackStateRepository = playbackStateRepository,
                     onEnterKidMode = onEnterKidMode,
@@ -83,6 +87,7 @@ fun rememberAppState(
         AppState(
             lockTaskManager = lockTaskManager,
             videoRepository = videoRepository,
+            videoLibraryService = videoLibraryService,
             videoPlayerManager = videoPlayerManager,
             playbackStateRepository = playbackStateRepository,
             onEnterKidMode = onEnterKidMode,

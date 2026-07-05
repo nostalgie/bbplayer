@@ -9,6 +9,18 @@ data class FolderGroupResult(
 )
 
 /**
+ * Extract absolute parent folder path from a file URI string.
+ * Returns null for non-file URIs or URIs without a parent directory.
+ */
+fun extractParentFolderPath(uriString: String): String? {
+    val uri = Uri.parse(uriString)
+    if (uri.scheme != "file") return null
+    val path = uri.path ?: return null
+    val lastSlash = path.lastIndexOf('/')
+    return if (lastSlash > 0) path.substring(0, lastSlash) else null
+}
+
+/**
  * Extract folder information from a URI string.
  * Returns Pair<displayPath, fileName> or null if parsing fails.
  */

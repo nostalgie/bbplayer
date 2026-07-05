@@ -2,6 +2,8 @@ package com.dima.kidsvideoplayer
 
 import android.app.Application
 import android.util.Log
+import com.dima.kidsvideoplayer.data.VideoLibraryService
+import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 
 /**
@@ -10,6 +12,14 @@ import com.dima.kidsvideoplayer.player.VideoPlayerManager
  * (critical for HOME/kiosk launcher mode).
  */
 class KidsVideoApp : Application() {
+
+    val videoRepository: VideoRepository by lazy {
+        VideoRepository(this)
+    }
+
+    val videoLibraryService: VideoLibraryService by lazy {
+        VideoLibraryService(this, videoRepository)
+    }
 
     /** Single libVLC player instance for the process — do not release on Activity.onDestroy. */
     val videoPlayerManager: VideoPlayerManager by lazy {

@@ -198,10 +198,11 @@ fun FolderItem(
     selectedCount: Int,
     toggleableState: ToggleableState,
     isScanning: Boolean,
+    isAlreadyWatched: Boolean = false,
     onSelect: () -> Unit,
     onClick: () -> Unit
 ) {
-    val hasSelection = selectedCount > 0
+    val hasSelection = selectedCount > 0 || isAlreadyWatched
 
     Surface(
         shape = RoundedCornerShape(8.dp),
@@ -213,11 +214,10 @@ fun FolderItem(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Tri-state checkbox for selection
             TriStateCheckbox(
                 state = toggleableState,
-                onClick = if (!isScanning) onSelect else null,
-                enabled = !isScanning,
+                onClick = if (!isScanning && !isAlreadyWatched) onSelect else null,
+                enabled = !isScanning && !isAlreadyWatched,
                 colors = CheckboxDefaults.colors(
                     checkedColor = GreenPrimary,
                     uncheckedColor = Color.White.copy(alpha = 0.5f)
@@ -246,11 +246,12 @@ fun FolderItem(
                     // Secondary line: selection count or supported video count
                     Text(
                         text = when {
+                            isAlreadyWatched -> "Уже добавлена"
                             isScanning -> "Сканирование..."
                             videoCount == null -> "Подсчёт..."
                             supportedVideoCount == null -> if (videoCount == 0) "Нет видео" else "$videoCount видео"
                             supportedVideoCount == 0 && videoCount == 0 -> "Нет видео"
-                            selectedCount > 0 -> "Выбрано: $selectedCount из $supportedVideoCount"
+                            selectedCount > 0 -> "Выбрана"
                             else -> "$supportedVideoCount видео"
                         },
                         fontSize = 12.sp,
@@ -345,7 +346,6 @@ fun VideoFileItem(
  */
 @Composable
 fun FilePickerBottomBar(
-    selectedFileCount: Int,
     selectedFolderCount: Int,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
@@ -363,21 +363,15 @@ fun FilePickerBottomBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Selection count
-                Column {
-                    Text(
-                        text = "Выбрано: $selectedFileCount файлов",
-                        fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                    if (selectedFolderCount > 0) {
-                        Text(
-                            text = "из $selectedFolderCount папок",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.5f)
-                        )
-                    }
-                }
+                Text(
+                    text = if (selectedFolderCount > 0) {
+                        "Выбрано папок: $selectedFolderCount"
+                    } else {
+                        "Выберите папки для добавления"
+                    },
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
 
                 // Action buttons
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -392,7 +386,7 @@ fun FilePickerBottomBar(
                     }
                     Button(
                         onClick = onConfirm,
-                        enabled = selectedFileCount > 0,
+                        enabled = selectedFolderCount > 0,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GreenPrimary,

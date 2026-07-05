@@ -16,20 +16,29 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
-import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.navigation.AppNavHost
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.utils.StoragePermissionHelper
 import com.dima.kidsvideoplayer.ui.theme.KidsVideoPlayerTheme
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var lockTaskManager: LockTaskManager
-    private lateinit var videoRepository: VideoRepository
+    private val app: KidsVideoApp
+        get() = application as KidsVideoApp
+    private val videoRepository
+        get() = app.videoRepository
+    private val videoLibraryService
+        get() = app.videoLibraryService
     private val videoPlayerManager: VideoPlayerManager
-        get() = (application as KidsVideoApp).videoPlayerManager
+        get() = app.videoPlayerManager
     private lateinit var playbackStateRepository: PlaybackStateRepository
 
     /** Single source of truth for kiosk state — set from Compose [AppState]. */
@@ -40,8 +49,19 @@ class MainActivity : ComponentActivity() {
 
         val appContext = applicationContext
         lockTaskManager = LockTaskManager(appContext)
-        videoRepository = VideoRepository(appContext)
         playbackStateRepository = PlaybackStateRepository(appContext)
+
+        videoLibraryService.start()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                videoLibraryService.startPeriodicScan()
+                try {
+                    awaitCancellation()
+                } finally {
+                    videoLibraryService.stopPeriodicScan()
+                }
+            }
+        }
 
         requestVideoPermissionIfNeeded()
 
@@ -60,6 +80,7 @@ class MainActivity : ComponentActivity() {
                     val state = rememberAppState(
                         lockTaskManager = lockTaskManager,
                         videoRepository = videoRepository,
+                        videoLibraryService = videoLibraryService,
                         videoPlayerManager = videoPlayerManager,
                         playbackStateRepository = playbackStateRepository,
                         onEnterKidMode = { enterKidMode() },
