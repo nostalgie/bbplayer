@@ -13,7 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -186,14 +186,15 @@ fun ParentDashboardScreen(
         )
     }
 
-    val isPortrait = LocalConfiguration.current.screenHeightDp > LocalConfiguration.current.screenWidthDp
-
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(DashboardBackground)
             .padding(12.dp)
     ) {
+        val isPortrait = maxHeight > maxWidth
+
+        Column(modifier = Modifier.fillMaxSize()) {
         ScanStatusBar(
             libraryState = libraryState,
             onRefresh = { videoLibraryService.scanNow() }
@@ -255,6 +256,7 @@ fun ParentDashboardScreen(
                     onExit = { requestPin(PinAction.EXIT) }
                 )
             }
+        }
         }
     }
 }
