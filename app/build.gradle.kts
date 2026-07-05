@@ -13,6 +13,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -75,9 +76,6 @@ dependencies {
     // libVLC — same playback engine as VLC (AVI/XVID/AC3 and most local formats)
     implementation("org.videolan.android:libvlc-all:3.6.2")
 
-    // FFmpeg extension used only by VideoCompatibilityChecker for pre-add validation
-    implementation(project(":decoder_ffmpeg"))
-
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
@@ -88,4 +86,12 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("androidx.test.ext:junit:1.1.5")
     testImplementation("com.google.truth:truth:1.2.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+
+    // Instrumented / Compose UI tests
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

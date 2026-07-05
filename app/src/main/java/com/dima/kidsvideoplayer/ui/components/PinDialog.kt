@@ -56,8 +56,8 @@ fun PinDialog(
     var pin by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     var isLockedOut by remember { mutableStateOf(false) }
-    var failedAttempts by remember { mutableIntStateOf(0) }
     var lockoutRemaining by remember { mutableIntStateOf(0) }
+    val pinValidator = remember(correctPin) { PinValidator(correctPin, MAX_PIN_ATTEMPTS) }
 
     // Lockout countdown timer
     LaunchedEffect(isLockedOut) {
@@ -68,7 +68,7 @@ fun PinDialog(
                 lockoutRemaining--
             }
             isLockedOut = false
-            failedAttempts = 0
+            pinValidator.resetLockout()
         }
     }
 
@@ -167,15 +167,17 @@ fun PinDialog(
                                                     }
                                                     // Check PIN when all digits entered
                                                     if (pin.length == correctPin.length) {
-                                                        if (pin == correctPin) {
-                                                            onPinCorrect()
-                                                        } else {
-                                                            failedAttempts++
-                                                            if (failedAttempts >= MAX_PIN_ATTEMPTS) {
+                                                        when (pinValidator.validate(pin)) {
+                                                            PinResult.Correct -> onPinCorrect()
+                                                            PinResult.LockedOut -> {
                                                                 isLockedOut = true
+                                                                isError = true
+                                                                pin = ""
                                                             }
-                                                            isError = true
-                                                            pin = ""
+                                                            PinResult.Incorrect -> {
+                                                                isError = true
+                                                                pin = ""
+                                                            }
                                                         }
                                                     }
                                                 }

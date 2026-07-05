@@ -10,66 +10,48 @@ import androidx.compose.runtime.setValue
 import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoRepository
-import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 
 /**
  * Centralized app state holding managers and lock-task status.
- *
- * Reduces prop drilling through navigation composables and provides
- * a single source of truth for shared state.
  */
 @Stable
 class AppState(
     val lockTaskManager: LockTaskManager,
     val videoRepository: VideoRepository,
     val videoPlayerManager: VideoPlayerManager,
-    val videoCompatibilityChecker: VideoCompatibilityChecker,
     val playbackStateRepository: PlaybackStateRepository,
     val onEnterKidMode: () -> Unit,
     val onExitKidMode: () -> Unit,
     val onExitApp: () -> Unit
 ) {
-    /** Whether kiosk/lock-task mode is currently active. */
     var isLockTaskActive: Boolean by mutableStateOf(false)
         internal set
 
-    /**
-     * Pending video index to start playback from when returning to kid mode.
-     * Set by ParentDashboardScreen when user clicks a video, consumed by KidPlayerScreen.
-     * -1 means no pending index (use default behavior).
-     */
     var pendingStartVideoIndex: Int by mutableStateOf(-1)
         internal set
 
-    /** Enter kiosk mode — updates state and delegates to [LockTaskManager]. */
     fun enterKidMode() {
         onEnterKidMode()
         isLockTaskActive = true
     }
 
-    /** Exit kiosk mode — updates state and delegates to [LockTaskManager]. */
     fun exitKidMode() {
         onExitKidMode()
         isLockTaskActive = false
     }
 
-    /** Exit the app completely — clears kiosk state then delegates to Activity. */
     fun exitApp() {
         isLockTaskActive = false
         onExitApp()
     }
 }
 
-/**
- * Remember [AppState] across recompositions.
- */
 @Composable
 fun rememberAppState(
     lockTaskManager: LockTaskManager,
     videoRepository: VideoRepository,
     videoPlayerManager: VideoPlayerManager,
-    videoCompatibilityChecker: VideoCompatibilityChecker,
     playbackStateRepository: PlaybackStateRepository,
     onEnterKidMode: () -> Unit,
     onExitKidMode: () -> Unit,
@@ -83,7 +65,6 @@ fun rememberAppState(
                     lockTaskManager = lockTaskManager,
                     videoRepository = videoRepository,
                     videoPlayerManager = videoPlayerManager,
-                    videoCompatibilityChecker = videoCompatibilityChecker,
                     playbackStateRepository = playbackStateRepository,
                     onEnterKidMode = onEnterKidMode,
                     onExitKidMode = onExitKidMode,
@@ -98,7 +79,6 @@ fun rememberAppState(
             lockTaskManager = lockTaskManager,
             videoRepository = videoRepository,
             videoPlayerManager = videoPlayerManager,
-            videoCompatibilityChecker = videoCompatibilityChecker,
             playbackStateRepository = playbackStateRepository,
             onEnterKidMode = onEnterKidMode,
             onExitKidMode = onExitKidMode,

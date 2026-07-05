@@ -16,26 +16,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
-// Animation constants
-private const val PRESSED_SCALE = 0.75f
-private const val PULSE_SCALE = 1.04f
 private const val BOUNCE_RESET_DELAY_MS = 250L
-private const val PULSE_DURATION_MS = 800
 
-/**
- * Kid-friendly button with spring bounce animation on press.
- * No standard Material styling — playful, rounded, colorful.
- *
- * @param text Button label
- * @param onClick Click handler
- * @param backgroundColor Background color
- * @param textColor Text color
- * @param icon Optional emoji/icon character displayed above text
- * @param size Button size (width & height)
- * @param fontSize Text size for the icon
- * @param modifier Optional modifier
- */
 @Composable
 fun BounceButton(
     text: String,
@@ -53,33 +37,11 @@ fun BounceButton(
     val buttonHeight = if (height != Dp.Unspecified) height else size
 
     var isPressed by remember { mutableStateOf(false) }
+    val combinedScale = rememberKidButtonScale(isPressed)
 
-    // Spring-based scale animation on press
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) PRESSED_SCALE else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioHighBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "bounce_scale"
-    )
-
-    // Subtle idle pulsing animation
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = PULSE_SCALE,
-        animationSpec = infiniteRepeatable(
-            animation = tween(PULSE_DURATION_MS, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_scale"
-    )
-
-    // Reset bounce after short delay
     LaunchedEffect(isPressed) {
         if (isPressed) {
-            kotlinx.coroutines.delay(BOUNCE_RESET_DELAY_MS)
+            delay(BOUNCE_RESET_DELAY_MS)
             isPressed = false
         }
     }
@@ -89,8 +51,8 @@ fun BounceButton(
             .width(buttonWidth)
             .height(buttonHeight)
             .graphicsLayer {
-                scaleX = scale * pulseScale
-                scaleY = scale * pulseScale
+                scaleX = combinedScale
+                scaleY = combinedScale
             },
         shape = RoundedCornerShape(20.dp),
         color = backgroundColor,

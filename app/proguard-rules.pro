@@ -1,16 +1,8 @@
 # ==============================
-# Media3 / ExoPlayer
-# ==============================
--keep class androidx.media3.** { *; }
--dontwarn androidx.media3.**
-
 # libVLC
+# ==============================
 -keep class org.videolan.** { *; }
 -dontwarn org.videolan.**
-
-# FFmpeg extension native methods (VideoCompatibilityChecker)
--keep class androidx.media3.decoder.ffmpeg.** { *; }
--dontwarn androidx.media3.decoder.ffmpeg.**
 
 # ==============================
 # DataStore Preferences
@@ -23,9 +15,6 @@
 # ==============================
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
--keepclassmembers class kotlinx.coroutines.** {
-    volatile **;
-}
 -keepclassmembers class * extends kotlin.coroutines.Continuation { *; }
 -dontwarn kotlinx.coroutines.**
 

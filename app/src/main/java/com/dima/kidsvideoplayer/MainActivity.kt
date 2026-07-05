@@ -1,13 +1,9 @@
 package com.dima.kidsvideoplayer
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.View
-import android.view.ViewTreeObserver
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -24,8 +20,8 @@ import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.navigation.AppNavHost
-import com.dima.kidsvideoplayer.player.VideoCompatibilityChecker
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
+import com.dima.kidsvideoplayer.utils.StoragePermissionHelper
 import com.dima.kidsvideoplayer.ui.theme.KidsVideoPlayerTheme
 
 class MainActivity : ComponentActivity() {
@@ -34,7 +30,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var videoRepository: VideoRepository
     private val videoPlayerManager: VideoPlayerManager
         get() = (application as KidsVideoApp).videoPlayerManager
-    private lateinit var videoCompatibilityChecker: VideoCompatibilityChecker
     private lateinit var playbackStateRepository: PlaybackStateRepository
 
     /** Single source of truth for kiosk state — set from Compose [AppState]. */
@@ -46,7 +41,6 @@ class MainActivity : ComponentActivity() {
         val appContext = applicationContext
         lockTaskManager = LockTaskManager(appContext)
         videoRepository = VideoRepository(appContext)
-        videoCompatibilityChecker = VideoCompatibilityChecker(appContext)
         playbackStateRepository = PlaybackStateRepository(appContext)
 
         requestVideoPermissionIfNeeded()
@@ -67,7 +61,6 @@ class MainActivity : ComponentActivity() {
                         lockTaskManager = lockTaskManager,
                         videoRepository = videoRepository,
                         videoPlayerManager = videoPlayerManager,
-                        videoCompatibilityChecker = videoCompatibilityChecker,
                         playbackStateRepository = playbackStateRepository,
                         onEnterKidMode = { enterKidMode() },
                         onExitKidMode = { exitKidMode() },
@@ -84,15 +77,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val content: View = findViewById(android.R.id.content)
-        content.viewTreeObserver.addOnPreDrawListener(
-            object : ViewTreeObserver.OnPreDrawListener {
-                override fun onPreDraw(): Boolean {
-                    content.viewTreeObserver.removeOnPreDrawListener(this)
-                    return true
-                }
-            }
-        )
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -176,17 +160,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestVideoPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_VIDEO)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(arrayOf(android.Manifest.permission.READ_MEDIA_VIDEO), 0)
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 0)
+        if (!StoragePermissionHelper.hasStoragePermission(this)) {
+            val permissions = StoragePermissionHelper.requiredPermissions()
+            if (permissions.isNotEmpty()) {
+                requestPermissions(permissions, 0)
             }
         }
     }

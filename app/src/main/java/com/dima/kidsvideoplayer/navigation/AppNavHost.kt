@@ -60,15 +60,14 @@ fun AppNavHost(
                         popUpTo(Routes.KID_PLAYER) { inclusive = false }
                     }
                 },
-                isLockTaskActive = appState.isLockTaskActive,
-                pendingStartVideoIndex = appState.pendingStartVideoIndex
+                pendingStartVideoIndex = appState.pendingStartVideoIndex,
+                onPendingIndexConsumed = { appState.pendingStartVideoIndex = -1 }
             )
         }
 
         composable(Routes.PARENT_DASHBOARD) {
             ParentDashboardScreen(
                 videoRepository = appState.videoRepository,
-                videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBackToKidMode = {
                     appState.videoPlayerManager.play()
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
@@ -89,7 +88,6 @@ fun AppNavHost(
         composable(Routes.FILE_PICKER) {
             FilePickerScreen(
                 videoRepository = appState.videoRepository,
-                videoCompatibilityChecker = appState.videoCompatibilityChecker,
                 onBack = {
                     appState.videoPlayerManager.play()
                     navController.popBackStack(Routes.PARENT_DASHBOARD, inclusive = false)

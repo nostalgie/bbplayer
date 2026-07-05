@@ -49,8 +49,8 @@ class LockTaskManager(private val context: Context) {
      */
     fun isLockTaskRunning(): Boolean {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE)
-            as? android.app.ActivityManager
-        return activityManager?.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE
+            as? android.app.ActivityManager ?: return false
+        return activityManager.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE
     }
 
     /**

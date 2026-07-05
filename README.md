@@ -8,7 +8,7 @@ Android-приложение — видеоплеер для детей с ро�
 
 | Режим | Экран | Описание | Доступ |
 |-------|-------|----------|--------|
-| Детский | `KidPlayerScreen` | Полноэкранный плеер, навигация между видео, киоск | По умолчанию |
+| Детский | `KidPlayerScreen` | Полноэкранный libVLC плеер, навигация между видео, киоск | По умолчанию |
 | Родительский | `ParentDashboardScreen` | Управление плейлистом, запуск видео | Long press шестерёнки 3 сек (без PIN) |
 | Выбор файлов | `FilePickerScreen` | Браузер файлов на устройстве | Из родительского экрана (PIN `1234`) |
 
@@ -17,15 +17,15 @@ Android-приложение — видеоплеер для детей с ро�
 ```
 video-game/
 ├── app/                          # Основное приложение
-├── decoder_ffmpeg/               # FFmpeg-декодер (Media3 extension)
-├── plans/                        # Внутренние заметки по разработке
+├── docs/                         # Инструкции по установке
+├── scripts/                      # deploy-kiosk.sh
 └── README.md
 ```
 
 ```
 app/src/main/java/com/dima/kidsvideoplayer/
 ├── MainActivity.kt               # Точка входа: Compose, киоск lifecycle, immersive UI
-├── KidsVideoApp.kt               # Application
+├── KidsVideoApp.kt               # Application (singleton VideoPlayerManager)
 ├── AppState.kt                   # Общее состояние (менеджеры, lock-task flag)
 │
 ├── admin/
@@ -33,178 +33,64 @@ app/src/main/java/com/dima/kidsvideoplayer/
 │   └── MyDeviceAdminReceiver.kt  # Device Admin Receiver
 │
 ├── data/
-│   ├── VideoRepository.kt        # DataStore: список URI видео, кэш метаданных
+│   ├── VideoRepository.kt        # DataStore: список URI, выбор, развёрнутые папки
 │   └── PlaybackStateRepository.kt  # SharedPreferences: позиция воспроизведения
 │
 ├── navigation/
 │   └── AppNavHost.kt             # kid_player ↔ parent_dashboard ↔ file_picker
 │
 ├── player/
-│   ├── VideoPlayerManager.kt     # ExoPlayer: плейлист, next/prev, repeat
-│   ├── VideoCompatibilityChecker.kt  # Проверка кодеков перед воспроизведением
-│   ├── CompatibilityResult.kt
+│   ├── VideoPlayerManager.kt     # libVLC: плейлист, next/prev, seek
 │   └── SeekAccelerator.kt        # Ускорение перемотки при long press
 │
 ├── ui/
-│   ├── components/
-│   │   ├── BounceButton.kt       # Анимированная кнопка
-│   │   ├── PinDialog.kt          # PIN-диалог (по умолчанию 1234)
-│   │   ├── SeekButton.kt
-│   │   └── VerticalScrollbar.kt
+│   ├── components/               # BounceButton, SeekButton, PinDialog, PinValidator
 │   ├── screens/
-│   │   ├── KidPlayerScreen.kt    # Детский режим + секретная дверь
+│   │   ├── KidPlayerScreen.kt
 │   │   ├── ParentDashboardScreen.kt
 │   │   ├── FilePickerScreen.kt
+│   │   ├── dashboard/VideoListGrouping.kt
+│   │   ├── kidplayer/            # PlayerControlsOverlay, SecretDoorGesture
 │   │   └── filepicker/
-│   │       ├── FilePickerComponents.kt
-│   │       └── FileSystemService.kt
 │   └── theme/
 │
 └── utils/
-    ├── HuaweiStorageHelper.kt    # SD-карта на Huawei/Honor
-    └── PerformanceMonitor.kt
+    ├── HuaweiStorageHelper.kt
+    ├── VideoPathUtils.kt
+    └── StoragePermissionHelper.kt
 ```
 
-### Где что искать (шпаргалка)
+### Где что искать
 
 | Задача | Файл |
 |--------|------|
-| Киоск: старт/стоп, политики | `admin/LockTaskManager.kt` |
-| Автозапуск киоска при старте | `navigation/AppNavHost.kt`, `MainActivity.kt` |
-| Полный админский выход | `LockTaskManager.relinquishDeviceOwner()`, `MainActivity.exitApp()` |
-| Device Admin + HOME launcher | `AndroidManifest.xml`, `res/xml/device_admin_policies.xml` |
+| Киоск | `admin/LockTaskManager.kt` |
+| Автозапуск киоска | `navigation/AppNavHost.kt` |
 | Родительский PIN | `ui/components/PinDialog.kt` |
-| Секретная дверь | `ui/screens/KidPlayerScreen.kt` |
+| Секретная дверь | `ui/screens/kidplayer/SecretDoorGesture.kt` |
 | Выбор видео | `ui/screens/FilePickerScreen.kt` |
 | SD-карта Honor/Huawei | `utils/HuaweiStorageHelper.kt` |
 | Список видео | `data/VideoRepository.kt` |
-| ExoPlayer | `player/VideoPlayerManager.kt` |
-| Навигация | `navigation/AppNavHost.kt` |
-| Сборка | `app/build.gradle.kts` |
+| Воспроизведение | `player/VideoPlayerManager.kt` (libVLC) |
 
 ## Архитектура
 
-### Навигация
-
-```
-AppNavHost
-├── kid_player         → KidPlayerScreen        (startDestination)
-├── parent_dashboard   → ParentDashboardScreen
-└── file_picker        → FilePickerScreen
-```
-
-### Поток данных
-
 ```
 FilePickerScreen / ParentDashboardScreen
-  → VideoRepository (DataStore) + VideoCompatibilityChecker
-  → KidPlayerScreen → VideoPlayerManager (ExoPlayer + decoder_ffmpeg)
+  → VideoRepository (DataStore)
+  → KidPlayerScreen → VideoPlayerManager (libVLC)
   → PlaybackStateRepository (возобновление с позиции)
 ```
 
-### Секретная дверь и админский доступ
+Подробнее: [docs/PHONE_SETUP.md](docs/PHONE_SETUP.md)
 
-**Вход в настройки (без PIN):** удерживайте иконку шестерёнки в правом верхнем углу плеера **3 секунды** → `ParentDashboardScreen`. Lock Task временно снимается.
-
-**PIN `1234` нужен для:**
-- добавления видео (кнопка «Добавить» или пустой список);
-- полного снятия киоска (кнопка «Снять киоск»).
-
-**Возврат в детский режим:** «Назад» или выбор видео → `enterKidMode()` (Lock Task снова включается).
-
-### Админский выход (снять киоск и удалить приложение)
-
-| Способ | Когда использовать |
-|--------|-------------------|
-| **В приложении** | Шестерёнка 3 сек → «Снять киоск» → PIN `1234`. Снимает Lock Task, политики Device Owner и статус владельца устройства. После этого APK удаляется как обычное приложение. |
-| **ADB** | Приложение зависло или забыли PIN: `adb shell dpm remove-active-admin com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver` затем `adb uninstall com.dima.kidsvideoplayer` |
-| **Сброс** | Recovery → сброс к заводским настройкам (ядерный вариант без ПК) |
-
-Подробнее: [docs/PHONE_SETUP.md](docs/PHONE_SETUP.md) (разделы 8.4–8.6).
-
-## Режим киоска
-
-Киоск реализован через **Lock Task Mode** (`startLockTask` / `stopLockTask`).
-
-### Два уровня
-
-| Уровень | Условие | Возможности |
-|---------|---------|-------------|
-| Screen pinning | Без Device Owner | Закрепление экрана, нужно включить в настройках |
-| Device Owner | `adb shell dpm set-device-owner` | Тихий киоск, HOME=приложение, нет шторки/блокировки |
-
-### Что делает `LockTaskManager`
-
-- `startKioskMode()` — whitelist (Device Owner) + `startLockTask()`
-- `stopKioskMode()` — `stopLockTask()`
-- `applyKioskPolicies()` — отключить статус-бар, HOME launcher, keyguard, stay-awake, заблокировать «Недавние»
-- `removeKioskPolicies()` — снять политики при выходе
-- `relinquishDeviceOwner()` — снять статус Device Owner (`clearDeviceOwnerApp`), чтобы можно было удалить APK
-
-`AppNavHost` автоматически запускает киоск через ~800 мс после старта (после инициализации плеера).
-
-## Сборка и установка
-
-**Требование:** Java 17
-
-Подробная пошаговая инструкция (подключение телефона, Ubuntu, киоск):  
-**[docs/PHONE_SETUP.md](docs/PHONE_SETUP.md)**
+## Сборка и тесты
 
 ```bash
 ./gradlew assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
+./gradlew testDebugUnitTest          # unit-тесты (Robolectric)
+./gradlew connectedDebugAndroidTest  # Compose UI-тесты (нужен эмулятор)
 ```
-
-Или одной командой (см. `scripts/deploy-kiosk.sh`):
-
-```bash
-./scripts/deploy-kiosk.sh
-```
-
-## Запуск киоска на Honor 50 Lite (MagicOS 7.1, Android 13)
-
-### 1. Подготовка телефона
-
-1. **Настройки → О телефоне** → 7× нажать «Номер сборки»
-2. **Для разработчиков → Отладка по USB** — включить
-3. Подключить USB, подтвердить «Разрешить отладку»
-
-### 2. Device Owner (рекомендуется для выделенного детского телефона)
-
-**Важно:** на устройстве не должно быть аккаунтов (Google, Honor ID). Иначе — сброс к заводским настройкам.
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell dpm set-device-owner com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver
-adb shell dpm list-owners   # проверка
-adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
-```
-
-### 3. Добавить видео
-
-1. Удерживайте **шестерёнку** 3 сек → родительский экран (без PIN)
-2. «Добавить» → PIN `1234` → файловый пикер
-3. Выдать **«Доступ ко всем файлам»**: Настройки → Приложения → Детский Видеоплеер → Разрешения → Файлы и медиа
-4. Выбрать папку/видео → «Назад» в детский режим (киоск включится снова)
-
-### 4. Админский выход
-
-- **Временно в настройки:** шестерёнка 3 сек (Lock Task снимается, PIN не нужен)
-- **Полностью снять киоск:** «Снять киоск» → PIN `1234` → обычный рабочий стол, можно удалить APK
-- **Через ADB:** см. раздел «Админский выход» выше или `scripts/deploy-kiosk.sh`
-
-### Быстрый тест без Device Owner
-
-1. Установить APK
-2. **Настройки → Безопасность → Закрепление экрана** — включить
-3. Запустить приложение, подтвердить закрепление
-
-## Особенности Honor / MagicOS
-
-- `HuaweiStorageHelper` распознаёт производителей `huawei` и `honor` для SD-карты
-- На Android 13 нужен `MANAGE_EXTERNAL_STORAGE` для файлового браузера
-- Экран **поворачивается вместе с планшетом** во все 4 стороны (`fullSensor` в манифесте)
-- Пока приложение открыто, экран **не гаснет** по таймауту (`FLAG_KEEP_SCREEN_ON`); на батарее расход выше при длительном просмотре
 
 ## Технологический стек
 
@@ -212,27 +98,21 @@ adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
 |-----------|--------|
 | Kotlin | 1.9.22 |
 | Jetpack Compose BOM | 2024.01.00 |
-| Media3 ExoPlayer | 1.2.1 |
+| libVLC | 3.6.2 |
 | Navigation Compose | 2.7.6 |
 | DataStore Preferences | 1.0.0 |
 | AGP | 8.2.2 |
-| Gradle | 8.5 |
 
-## Текущее состояние
+## Реализовано
 
-### Реализовано
-
-- [x] Киоск (Lock Task Mode) с автозапуском и Device Owner политиками
-- [x] Три экрана: детский, родительский, файловый пикер
-- [x] ExoPlayer + FFmpeg-декодер
-- [x] Проверка совместимости видео
+- [x] Киоск (Lock Task Mode) с Device Owner политиками
+- [x] libVLC для воспроизведения локальных видео
+- [x] Файловый пикер с batch-добавлением
 - [x] Сохранение позиции воспроизведения
 - [x] PIN-защита добавления видео и снятия киоска
-- [x] Поддержка Huawei/Honor SD-карты
+- [x] Unit-тесты для repository, path utils, PIN, file system
 
-### В планах
+## В планах
 
+- [ ] Настраиваемый PIN
 - [ ] UI для Device Admin provisioning
-- [ ] Настраиваемый PIN (сейчас захардкожен `1234`)
-- [ ] Прогресс-бар видео
-- [ ] Обработка ошибок ExoPlayer

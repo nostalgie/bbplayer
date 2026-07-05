@@ -174,4 +174,44 @@ class LockTaskManagerTest {
         assertThat(admin).isNotNull()
         assertThat(admin!!.className).isEqualTo(MyDeviceAdminReceiver::class.java.name)
     }
+
+    @Test
+    fun isLockTaskRunning_returnsFalseWhenActivityManagerUnavailable() {
+        whenever(mockContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(null)
+        assertThat(manager.isLockTaskRunning()).isFalse()
+    }
+
+    @Test
+    fun isScreenPinningEnabled_returnsBooleanWithoutCrash() {
+        val result = manager.isScreenPinningEnabled()
+        assertThat(result).isAnyOf(true, false)
+    }
+
+    @Test
+    fun applyKioskPolicies_asDeviceOwner_appliesStatusBarPolicy() {
+        whenever(mockDpm.isDeviceOwnerApp("com.dima.kidsvideoplayer")).thenReturn(true)
+        manager.applyKioskPolicies()
+        verify(mockDpm).setStatusBarDisabled(any(), eq(true))
+    }
+
+    @Test
+    fun applyKioskPolicies_notDeviceOwner_doesNothing() {
+        whenever(mockDpm.isDeviceOwnerApp("com.dima.kidsvideoplayer")).thenReturn(false)
+        manager.applyKioskPolicies()
+        verify(mockDpm, never()).setLockTaskPackages(any(), any())
+    }
+
+    @Test
+    fun relinquishDeviceOwner_callsDpmWhenOwner() {
+        whenever(mockDpm.isDeviceOwnerApp("com.dima.kidsvideoplayer")).thenReturn(true)
+        manager.relinquishDeviceOwner()
+        verify(mockDpm).clearDeviceOwnerApp("com.dima.kidsvideoplayer")
+    }
+
+    @Test
+    fun relinquishDeviceOwner_skipsWhenNotOwner() {
+        whenever(mockDpm.isDeviceOwnerApp("com.dima.kidsvideoplayer")).thenReturn(false)
+        manager.relinquishDeviceOwner()
+        verify(mockDpm, never()).clearDeviceOwnerApp(any())
+    }
 }

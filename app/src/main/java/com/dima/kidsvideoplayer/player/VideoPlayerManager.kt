@@ -12,8 +12,7 @@ import org.videolan.libvlc.util.VLCVideoLayout
 /**
  * Video playback via libVLC (same engine as VLC desktop/Android).
  *
- * Supports AVI/XVID/AC3 and other formats that ExoPlayer's demuxer + FFmpeg audio extension
- * cannot handle reliably.
+ * Supports AVI/XVID/AC3 and other local video formats via libVLC.
  */
 class VideoPlayerManager(
     private val context: Context,
@@ -203,11 +202,6 @@ class VideoPlayerManager(
     fun getMediaItemCount(): Int = playlist.size
 
     fun getCurrentVideoUri(): String? = playlist.getOrNull(currentMediaItemIndex)
-
-    fun reinitialize() {
-        release()
-        initialize()
-    }
 
     fun release() {
         detachVideoLayout()

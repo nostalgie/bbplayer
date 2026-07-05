@@ -187,4 +187,63 @@ class VideoRepositoryTest {
             "content://video/3"
         ).inOrder()
     }
+
+    @Test
+    fun addVideoUri_persistsWhenReadingFlowBeforeNextAdd() {
+        runBlocking {
+            repository.addVideoUri("file:///video1.mp4")
+            assertThat(repository.videoUris.first()).containsExactly("file:///video1.mp4")
+            repository.addVideoUri("file:///video2.mp4")
+            assertThat(repository.videoUris.first())
+                .containsExactly("file:///video1.mp4", "file:///video2.mp4")
+                .inOrder()
+        }
+    }
+
+    @Test
+    fun addVideoUri_deduplicates() {
+        runBlocking {
+            repository.addVideoUri("content://video/1")
+            repository.addVideoUri("content://video/1")
+            assertThat(repository.videoUris.first()).containsExactly("content://video/1")
+        }
+    }
+
+    @Test
+    fun expandedFolders_emitsEmptyInitially() = runBlocking {
+        assertThat(repository.expandedFolders.first()).isEmpty()
+    }
+
+    @Test
+    fun saveExpandedFolders_persistsFolders() {
+        runBlocking {
+            repository.saveExpandedFolders(setOf("SD1/Movies", "SD1/Anime"))
+            assertThat(repository.expandedFolders.first())
+                .containsExactly("SD1/Movies", "SD1/Anime")
+        }
+    }
+
+    @Test
+    fun selectedVideos_emitsEmptyInitially() = runBlocking {
+        assertThat(repository.selectedVideos.first()).isEmpty()
+    }
+
+    @Test
+    fun saveSelectedVideos_persistsSelection() {
+        runBlocking {
+            repository.saveSelectedVideos(setOf("content://video/1", "content://video/2"))
+            assertThat(repository.selectedVideos.first())
+                .containsExactly("content://video/1", "content://video/2")
+        }
+    }
+
+    @Test
+    fun toggleVideoSelection_addsAndRemoves() {
+        runBlocking {
+            repository.toggleVideoSelection("content://video/1")
+            assertThat(repository.selectedVideos.first()).containsExactly("content://video/1")
+            repository.toggleVideoSelection("content://video/1")
+            assertThat(repository.selectedVideos.first()).isEmpty()
+        }
+    }
 }
