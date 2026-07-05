@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
                         playbackStateRepository = playbackStateRepository,
                         onEnterKidMode = { enterKidMode() },
                         onExitKidMode = { exitKidMode() },
-                        onExitApp = { exitApp() }
+                        onSuspendKiosk = { suspendKiosk() }
                     )
 
                     SideEffect { appState = state }
@@ -100,11 +100,16 @@ class MainActivity : ComponentActivity() {
         hideSystemUI()
         videoPlayerManager.refreshVideoSurface()
 
-        if (appState?.isLockTaskActive == true) {
-            if (!lockTaskManager.isLockTaskRunning()) {
-                Log.d(TAG, "Re-starting kiosk mode in onResume (was lost)")
-                lockTaskManager.startKioskMode(this)
-            }
+        val state = appState
+        if (state != null &&
+            !state.kioskPausedForParent &&
+            lockTaskManager.isDeviceOwner() &&
+            !lockTaskManager.isLockTaskRunning()
+        ) {
+            Log.d(TAG, "Re-starting kiosk mode in onResume")
+            state.enterKidMode()
+        }
+        if (state?.isLockTaskActive == true) {
             videoPlayerManager.play()
         }
     }
@@ -130,12 +135,16 @@ class MainActivity : ComponentActivity() {
         lockTaskManager.stopKioskMode(this)
     }
 
-    private fun exitApp() {
-        Log.d(TAG, "Full admin exit — de-kiosk and relinquish Device Owner")
+    private fun suspendKiosk() {
+        Log.d(TAG, "Suspending kiosk — returning to home (Device Owner retained)")
         exitKidMode()
         lockTaskManager.removeKioskPolicies()
-        lockTaskManager.relinquishDeviceOwner()
-        videoPlayerManager.release()
+        startActivity(
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        )
         finishAffinity()
     }
 

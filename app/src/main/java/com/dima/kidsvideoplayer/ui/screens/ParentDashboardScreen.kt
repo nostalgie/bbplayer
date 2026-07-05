@@ -64,7 +64,7 @@ fun ParentDashboardScreen(
     onBackToKidMode: () -> Unit,
     onNavigateToFilePicker: () -> Unit = {},
     onPlayVideo: (Int) -> Unit = {},
-    onExitApp: () -> Unit = {}
+    onExit: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     val videoUris by videoRepository.videoUris.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -88,13 +88,13 @@ fun ParentDashboardScreen(
     pendingPinAction?.let { action ->
         PinDialog(
             title = when (action) {
-                PinAction.EXIT -> "Введите ПИН для снятия киоска"
+                PinAction.EXIT -> "Введите ПИН для выхода"
                 PinAction.ADD_VIDEOS -> "Введите ПИН для добавления видео"
             },
             onDismiss = { pendingPinAction = null },
             onPinCorrect = {
                 when (action) {
-                    PinAction.EXIT -> onExitApp()
+                    PinAction.EXIT -> onExit()
                     PinAction.ADD_VIDEOS -> onNavigateToFilePicker()
                 }
                 pendingPinAction = null
@@ -175,7 +175,7 @@ fun ParentDashboardScreen(
                 onBackToKidMode = onBackToKidMode,
                 onAddVideos = { requestPin(PinAction.ADD_VIDEOS) },
                 onClearAll = { showClearAllDialog = true },
-                onExitKiosk = { requestPin(PinAction.EXIT) },
+                onExit = { requestPin(PinAction.EXIT) },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -216,7 +216,7 @@ fun ParentDashboardScreen(
                     onBackToKidMode = onBackToKidMode,
                     onAddVideos = { requestPin(PinAction.ADD_VIDEOS) },
                     onClearAll = { showClearAllDialog = true },
-                    onExitKiosk = { requestPin(PinAction.EXIT) }
+                    onExit = { requestPin(PinAction.EXIT) }
                 )
             }
         }
@@ -230,7 +230,7 @@ private fun DashboardActionButtons(
     onBackToKidMode: () -> Unit,
     onAddVideos: () -> Unit,
     onClearAll: () -> Unit,
-    onExitKiosk: () -> Unit,
+    onExit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (horizontal) {
@@ -261,8 +261,8 @@ private fun DashboardActionButtons(
                 modifier = Modifier.weight(1f)
             )
             DashboardActionButton(
-                text = "Снять киоск",
-                onClick = onExitKiosk,
+                text = "Выход",
+                onClick = onExit,
                 backgroundColor = ExitRed,
                 fillWidth = true,
                 modifier = Modifier.weight(1f)
@@ -291,8 +291,8 @@ private fun DashboardActionButtons(
                 textColor = if (videoCount > 0) Color.White else Color.White.copy(alpha = 0.4f)
             )
             DashboardActionButton(
-                text = "Снять киоск",
-                onClick = onExitKiosk,
+                text = "Выход",
+                onClick = onExit,
                 backgroundColor = ExitRed
             )
         }

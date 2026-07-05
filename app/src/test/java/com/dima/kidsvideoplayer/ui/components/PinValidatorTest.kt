@@ -10,12 +10,12 @@ class PinValidatorTest {
 
     @Before
     fun setUp() {
-        validator = PinValidator("1234", maxAttempts = 3)
+        validator = PinValidator("1111", maxAttempts = 3)
     }
 
     @Test
     fun validate_correctPin_returnsCorrect() {
-        assertThat(validator.validate("1234")).isEqualTo(PinResult.Correct)
+        assertThat(validator.validate("1111")).isEqualTo(PinResult.Correct)
     }
 
     @Test
@@ -33,14 +33,14 @@ class PinValidatorTest {
     @Test
     fun validate_whileLockedOut_staysLockedOut() {
         repeat(3) { validator.validate("0000") }
-        assertThat(validator.validate("1234")).isEqualTo(PinResult.LockedOut)
+        assertThat(validator.validate("1111")).isEqualTo(PinResult.LockedOut)
     }
 
     @Test
     fun resetLockout_allowsRetry() {
         repeat(3) { validator.validate("0000") }
         validator.resetLockout()
-        assertThat(validator.validate("1234")).isEqualTo(PinResult.Correct)
+        assertThat(validator.validate("1111")).isEqualTo(PinResult.Correct)
     }
 
     @Test
@@ -53,7 +53,7 @@ class PinValidatorTest {
     @Test
     fun correctPin_resetsFailedAttempts() {
         validator.validate("0000")
-        validator.validate("1234")
+        validator.validate("1111")
         assertThat(validator.remainingAttempts()).isEqualTo(3)
     }
 

@@ -23,9 +23,13 @@ class AppState(
     val playbackStateRepository: PlaybackStateRepository,
     val onEnterKidMode: () -> Unit,
     val onExitKidMode: () -> Unit,
-    val onExitApp: () -> Unit
+    val onSuspendKiosk: () -> Unit
 ) {
     var isLockTaskActive: Boolean by mutableStateOf(false)
+        internal set
+
+    /** True while parent dashboard or file picker is open — kiosk stays off. */
+    var kioskPausedForParent: Boolean by mutableStateOf(false)
         internal set
 
     var pendingStartVideoIndex: Int by mutableStateOf(-1)
@@ -41,9 +45,10 @@ class AppState(
         isLockTaskActive = false
     }
 
-    fun exitApp() {
+    fun suspendKiosk() {
         isLockTaskActive = false
-        onExitApp()
+        kioskPausedForParent = false
+        onSuspendKiosk()
     }
 }
 
@@ -55,7 +60,7 @@ fun rememberAppState(
     playbackStateRepository: PlaybackStateRepository,
     onEnterKidMode: () -> Unit,
     onExitKidMode: () -> Unit,
-    onExitApp: () -> Unit
+    onSuspendKiosk: () -> Unit
 ): AppState {
     return rememberSaveable(
         saver = listSaver(
@@ -68,7 +73,7 @@ fun rememberAppState(
                     playbackStateRepository = playbackStateRepository,
                     onEnterKidMode = onEnterKidMode,
                     onExitKidMode = onExitKidMode,
-                    onExitApp = onExitApp
+                    onSuspendKiosk = onSuspendKiosk
                 ).also { state ->
                     state.isLockTaskActive = saved[0] == "1"
                 }
@@ -82,7 +87,7 @@ fun rememberAppState(
             playbackStateRepository = playbackStateRepository,
             onEnterKidMode = onEnterKidMode,
             onExitKidMode = onExitKidMode,
-            onExitApp = onExitApp
+            onSuspendKiosk = onSuspendKiosk
         )
     }
 }

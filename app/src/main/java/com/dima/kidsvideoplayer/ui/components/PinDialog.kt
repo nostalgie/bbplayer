@@ -25,7 +25,7 @@ import com.dima.kidsvideoplayer.ui.theme.TextGray
 import kotlinx.coroutines.delay
 
 /** Default PIN code — extract to DataStore for configurable PIN in future. */
-const val DEFAULT_PIN = "1234"
+const val DEFAULT_PIN = "1111"
 
 /** Maximum failed attempts before lockout. */
 private const val MAX_PIN_ATTEMPTS = 3
