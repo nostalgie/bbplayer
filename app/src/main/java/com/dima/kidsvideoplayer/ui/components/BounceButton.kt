@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -11,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -27,6 +29,7 @@ fun BounceButton(
     backgroundColor: Color,
     textColor: Color = Color.White,
     icon: String = "",
+    imageIcon: ImageVector? = null,
     size: Dp = 80.dp,
     width: Dp = Dp.Unspecified,
     height: Dp = Dp.Unspecified,
@@ -34,6 +37,12 @@ fun BounceButton(
     modifier: Modifier = Modifier
 ) {
     val resolvedHeight = if (height != Dp.Unspecified) height else size
+    val buttonDimension = when {
+        width != Dp.Unspecified && height != Dp.Unspecified -> minOf(width.value, height.value)
+        width != Dp.Unspecified -> width.value
+        height != Dp.Unspecified -> height.value
+        else -> size.value
+    }
     val sizeModifier = when {
         width != Dp.Unspecified && height != Dp.Unspecified -> Modifier.width(width).height(height)
         width != Dp.Unspecified -> Modifier.width(width).height(resolvedHeight)
@@ -71,7 +80,14 @@ fun BounceButton(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            if (icon.isNotEmpty()) {
+            if (imageIcon != null) {
+                Icon(
+                    imageVector = imageIcon,
+                    contentDescription = null,
+                    tint = textColor,
+                    modifier = Modifier.size((buttonDimension * 36 / 80).dp)
+                )
+            } else if (icon.isNotEmpty()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = icon,

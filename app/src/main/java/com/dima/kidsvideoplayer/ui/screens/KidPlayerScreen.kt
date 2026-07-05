@@ -89,9 +89,17 @@ fun KidPlayerScreen(
     var playbackError by remember { mutableStateOf<String?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
     var controlsInteraction by remember { mutableStateOf(0) }
+    var isPlaying by remember { mutableStateOf(videoPlayerManager.isPlaying) }
 
-    LaunchedEffect(controlsVisible, controlsInteraction) {
-        if (controlsVisible) {
+    LaunchedEffect(videoPlayerManager) {
+        while (true) {
+            isPlaying = videoPlayerManager.isPlaying
+            delay(300)
+        }
+    }
+
+    LaunchedEffect(controlsVisible, controlsInteraction, isPlaying) {
+        if (controlsVisible && isPlaying) {
             delay(5000)
             controlsVisible = false
         }
@@ -192,25 +200,21 @@ fun KidPlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(controlsVisible, controlsInteraction, secretDoorTouchSizePx) {
+                    .pointerInput(controlsVisible, controlsInteraction, isPlaying, secretDoorTouchSizePx) {
                         detectTapGestures { offset ->
                             val inSecretZone = offset.x >= size.width - secretDoorTouchSizePx &&
                                 offset.y <= secretDoorTouchSizePx
                             if (!inSecretZone) {
-                                controlsVisible = !controlsVisible
+                                if (isPlaying) {
+                                    controlsVisible = !controlsVisible
+                                } else {
+                                    controlsVisible = true
+                                }
                                 controlsInteraction++
                             }
                         }
                     }
             )
-
-            var isPlaying by remember { mutableStateOf(videoPlayerManager.isPlaying) }
-            LaunchedEffect(videoPlayerManager, controlsVisible) {
-                while (controlsVisible) {
-                    isPlaying = videoPlayerManager.isPlaying
-                    delay(300)
-                }
-            }
 
             PlayerControlsOverlay(
                 visible = controlsVisible,
@@ -237,8 +241,12 @@ fun KidPlayerScreen(
                 },
                 onPlayPause = {
                     controlsInteraction++
-                    if (videoPlayerManager.isPlaying) videoPlayerManager.pause()
-                    else videoPlayerManager.play()
+                    if (videoPlayerManager.isPlaying) {
+                        videoPlayerManager.pause()
+                        controlsVisible = true
+                    } else {
+                        videoPlayerManager.play()
+                    }
                 },
                 onSeekBackward = { offsetMs ->
                     controlsInteraction++

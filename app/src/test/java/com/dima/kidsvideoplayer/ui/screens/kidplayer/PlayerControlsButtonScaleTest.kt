@@ -12,8 +12,7 @@ class PlayerControlsButtonScaleTest {
     }
 
     @Test
-    fun sliderStartPadding_matchesButtonColumnWidth() {
-        assertEquals(102f, playerControlsSliderStartPadding(1f).value)
-        assertEquals(51f, playerControlsSliderStartPadding(0.5f).value)
+    fun scale_returnsLessThanOne_whenHeightIsLimited() {
+        assertEquals(0.5f, playerControlsButtonScale(245f))
     }
 }

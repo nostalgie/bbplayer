@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
@@ -30,14 +34,15 @@ import kotlin.math.min
 
 private val SliderReservedHeight = 72.dp
 private const val NaturalColumnHeightDp = 490f
+private const val NaturalButtonSizeDp = 80f
 private const val ButtonHorizontalPaddingDp = 12f
-private const val WidestButtonDp = 90f
+private val MenuVerticalOffsetUp = 20.dp
+private val SliderHorizontalPadding = 24.dp
+private val SliderTopPadding = 8.dp
+private val SliderBottomPadding = 8.dp
 
 internal fun playerControlsButtonScale(availableHeightDp: Float): Float =
     min(1f, availableHeightDp / NaturalColumnHeightDp)
-
-internal fun playerControlsSliderStartPadding(scale: Float) =
-    ((ButtonHorizontalPaddingDp + WidestButtonDp) * scale).dp
 
 @Composable
 fun BoxScope.PlayerControlsOverlay(
@@ -60,13 +65,13 @@ fun BoxScope.PlayerControlsOverlay(
         visible = visible,
         enter = fadeIn(animationSpec = fadeSpec),
         exit = fadeOut(animationSpec = fadeSpec),
-        modifier = Modifier.align(Alignment.CenterStart)
+        modifier = Modifier
+            .align(Alignment.CenterStart)
+            .offset(y = -MenuVerticalOffsetUp)
     ) {
         BoxWithConstraints {
             val scale = playerControlsButtonScale((maxHeight - SliderReservedHeight).value)
-            val bounceSmall = (80 * scale).dp
-            val bouncePlay = (90 * scale).dp
-            val seekSize = (80 * scale).dp
+            val buttonSize = (NaturalButtonSizeDp * scale).dp
             val spacing = (12 * scale).dp
             val fontSize = (36 * scale).sp
             val horizontalPadding = (ButtonHorizontalPaddingDp * scale).dp
@@ -85,7 +90,7 @@ fun BoxScope.PlayerControlsOverlay(
                     text = "⏮",
                     onClick = { if (hasMultipleVideos) onPrevious() },
                     backgroundColor = BlueButton,
-                    size = bounceSmall,
+                    size = buttonSize,
                     fontSize = fontSize,
                     modifier = if (!hasMultipleVideos) Modifier.alpha(0.4f) else Modifier
                 )
@@ -94,14 +99,15 @@ fun BoxScope.PlayerControlsOverlay(
                     icon = Icons.Default.FastRewind,
                     contentDescription = "Seek backward",
                     onSeek = onSeekBackward,
-                    size = seekSize
+                    size = buttonSize
                 )
 
                 BounceButton(
-                    text = if (isPlaying) "⏸" else "▶",
+                    text = "",
+                    imageIcon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     onClick = onPlayPause,
-                    backgroundColor = GreenPrimary,
-                    size = bouncePlay,
+                    backgroundColor = if (isPlaying) BlueButton else GreenPrimary,
+                    size = buttonSize,
                     fontSize = fontSize
                 )
 
@@ -109,14 +115,14 @@ fun BoxScope.PlayerControlsOverlay(
                     icon = Icons.Default.FastForward,
                     contentDescription = "Seek forward",
                     onSeek = onSeekForward,
-                    size = seekSize
+                    size = buttonSize
                 )
 
                 BounceButton(
                     text = "⏭",
                     onClick = { if (hasMultipleVideos) onNext() },
                     backgroundColor = BlueButton,
-                    size = bounceSmall,
+                    size = buttonSize,
                     fontSize = fontSize,
                     modifier = if (!hasMultipleVideos) Modifier.alpha(0.4f) else Modifier
                 )
@@ -130,10 +136,7 @@ fun BoxScope.PlayerControlsOverlay(
         exit = fadeOut(animationSpec = fadeSpec),
         modifier = Modifier.align(Alignment.BottomCenter)
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val scale = playerControlsButtonScale((maxHeight - SliderReservedHeight).value)
-            val sliderStartPadding = playerControlsSliderStartPadding(scale)
-
+        Box(modifier = Modifier.fillMaxWidth()) {
             Slider(
                 value = sliderValue,
                 onValueChange = onSliderChange,
@@ -141,10 +144,10 @@ fun BoxScope.PlayerControlsOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        start = sliderStartPadding,
-                        end = 24.dp,
-                        top = 16.dp,
-                        bottom = 16.dp
+                        start = SliderHorizontalPadding,
+                        end = SliderHorizontalPadding,
+                        top = SliderTopPadding,
+                        bottom = SliderBottomPadding
                     ),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
