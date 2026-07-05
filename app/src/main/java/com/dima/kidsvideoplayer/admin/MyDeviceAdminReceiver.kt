@@ -8,7 +8,7 @@ import android.util.Log
 /**
  * Device Admin Receiver required for Lock Task Mode (Kiosk Mode).
  *
- * To activate: Settings → Security → Device Admin → Enable "Детский Видеоплеер"
+ * To activate: Settings → Security → Device Admin → Enable "Мультики"
  * Or programmatically via DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN
  */
 class MyDeviceAdminReceiver : DeviceAdminReceiver() {
