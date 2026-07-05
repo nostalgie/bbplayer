@@ -23,6 +23,7 @@ import com.dima.kidsvideoplayer.data.VideoLibraryService
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
 import com.dima.kidsvideoplayer.ui.components.PinDialog
+import com.dima.kidsvideoplayer.ui.screens.kidplayer.BatteryIndicator
 import com.dima.kidsvideoplayer.ui.screens.kidplayer.PlayerControlsOverlay
 import com.dima.kidsvideoplayer.ui.screens.kidplayer.SecretDoorGesture
 import kotlinx.coroutines.delay
@@ -296,9 +297,17 @@ fun KidPlayerScreen(
             )
         }
 
-        SecretDoorGesture(
-            onActivated = { showParentPin = true },
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            BatteryIndicator()
+            SecretDoorGesture(
+                onActivated = { showParentPin = true }
+            )
+        }
     }
 }

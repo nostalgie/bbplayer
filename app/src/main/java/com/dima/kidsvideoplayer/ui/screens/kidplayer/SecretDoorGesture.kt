@@ -4,7 +4,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -50,7 +49,6 @@ fun SecretDoorGesture(
 
     Box(
         modifier = modifier
-            .padding(top = 8.dp, end = 8.dp)
             .size(SECRET_DOOR_TOUCH_SIZE)
             .pointerInput(Unit) {
                 awaitEachGesture {
