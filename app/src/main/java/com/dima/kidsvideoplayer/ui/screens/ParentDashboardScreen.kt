@@ -53,6 +53,10 @@ private val BUTTON_WIDTH = 88.dp
 private val BUTTON_HEIGHT = 40.dp
 private val BUTTON_FONT_SIZE = 12.sp
 
+private val FOLDER_ROW_ICON_SIZE = 20.sp
+private val FOLDER_ROW_VERTICAL_PADDING = 10.dp
+private val FOLDER_ROW_HORIZONTAL_PADDING = 12.dp
+
 private enum class PinAction {
     EXIT,
     ADD_VIDEOS
@@ -560,10 +564,13 @@ private fun FolderBrowseBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = FOLDER_ROW_HORIZONTAL_PADDING,
+                    vertical = FOLDER_ROW_VERTICAL_PADDING
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "📁", fontSize = 20.sp)
+            Text(text = "📁", fontSize = FOLDER_ROW_ICON_SIZE)
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = File(currentPath).name.ifEmpty { abbreviateFolderPath(currentPath) },
@@ -595,10 +602,13 @@ private fun RootFolderRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = FOLDER_ROW_HORIZONTAL_PADDING,
+                    vertical = FOLDER_ROW_VERTICAL_PADDING
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "📁", fontSize = 22.sp)
+            Text(text = "📁", fontSize = FOLDER_ROW_ICON_SIZE)
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = folderName,
@@ -615,17 +625,22 @@ private fun RootFolderRow(
                 color = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.padding(end = 8.dp)
             )
-            Surface(
-                onClick = onRemove,
-                shape = RoundedCornerShape(8.dp),
-                color = RedButton.copy(alpha = 0.2f)
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = " ✕ ",
-                    fontSize = 16.sp,
-                    color = RedButton,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
+                Surface(
+                    onClick = onRemove,
+                    shape = RoundedCornerShape(8.dp),
+                    color = RedButton.copy(alpha = 0.2f)
+                ) {
+                    Text(
+                        text = "✕",
+                        fontSize = 14.sp,
+                        color = RedButton,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
             }
         }
     }
@@ -646,10 +661,13 @@ private fun SubfolderRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = FOLDER_ROW_HORIZONTAL_PADDING,
+                    vertical = FOLDER_ROW_VERTICAL_PADDING
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "📁", fontSize = 20.sp)
+            Text(text = "📁", fontSize = FOLDER_ROW_ICON_SIZE)
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = folderName,
@@ -662,7 +680,7 @@ private fun SubfolderRow(
             )
             Text(
                 text = "›",
-                fontSize = 20.sp,
+                fontSize = FOLDER_ROW_ICON_SIZE,
                 color = FolderBlue
             )
         }
