@@ -1,11 +1,10 @@
 package com.dima.kidsvideoplayer
 
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.Bundle
-import android.view.Surface
 import android.util.Log
+import android.view.OrientationEventListener
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -15,9 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.Lifecycle
@@ -27,6 +24,7 @@ import com.dima.kidsvideoplayer.admin.LockTaskManager
 import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.navigation.AppNavHost
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
+import com.dima.kidsvideoplayer.utils.OrientationHelper
 import com.dima.kidsvideoplayer.utils.StoragePermissionHelper
 import com.dima.kidsvideoplayer.ui.theme.KidsVideoPlayerTheme
 import kotlinx.coroutines.awaitCancellation
@@ -47,8 +45,13 @@ class MainActivity : ComponentActivity() {
 
     /** Single source of truth for kiosk state — set from Compose [AppState]. */
     private var appState: AppState? = null
+    private var startupOrientationListener: OrientationEventListener? = null
+    private var attemptedOrientationRecreate = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        attemptedOrientationRecreate =
+            savedInstanceState?.getBoolean(STATE_ORIENTATION_RECREATED) == true
+        OrientationHelper.lockToDisplayRotation(this)
         super.onCreate(savedInstanceState)
 
         val appContext = applicationContext
@@ -79,37 +82,33 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val configuration = LocalConfiguration.current
-                    key(
-                        configuration.orientation,
-                        configuration.screenWidthDp,
-                        configuration.screenHeightDp
-                    ) {
-                        val navController = rememberNavController()
+                    val navController = rememberNavController()
 
-                        val state = rememberAppState(
-                            lockTaskManager = lockTaskManager,
-                            videoRepository = videoRepository,
-                            videoLibraryService = videoLibraryService,
-                            videoPlayerManager = videoPlayerManager,
-                            playbackStateRepository = playbackStateRepository,
-                            onEnterKidMode = { enterKidMode() },
-                            onExitKidMode = { exitKidMode() },
-                            onSuspendKiosk = { suspendKiosk() }
-                        )
+                    val state = rememberAppState(
+                        lockTaskManager = lockTaskManager,
+                        videoRepository = videoRepository,
+                        videoLibraryService = videoLibraryService,
+                        videoPlayerManager = videoPlayerManager,
+                        playbackStateRepository = playbackStateRepository,
+                        onEnterKidMode = { enterKidMode() },
+                        onExitKidMode = { exitKidMode() },
+                        onSuspendKiosk = { suspendKiosk() }
+                    )
 
-                        SideEffect { appState = state }
+                    SideEffect { appState = state }
 
-                        AppNavHost(
-                            navController = navController,
-                            appState = state
-                        )
-                    }
+                    AppNavHost(
+                        navController = navController,
+                        appState = state
+                    )
                 }
             }
         }
 
-        syncOrientationWithDisplay()
+        startupOrientationListener = OrientationHelper.listenForStartupCorrection(this) {
+            startupOrientationListener = null
+        }
+        window.decorView.post { finalizeStartupOrientation() }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -120,6 +119,11 @@ class MainActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         hideSystemUI()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_ORIENTATION_RECREATED, attemptedOrientationRecreate)
     }
 
     override fun onPause() {
@@ -148,6 +152,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        startupOrientationListener?.disable()
+        startupOrientationListener = null
         super.onDestroy()
         // Do NOT stop lock task or release the player here.
         // As the HOME launcher in kiosk mode, onDestroy runs on every restart;
@@ -194,32 +200,22 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Saved playback state: uri=$uri, position=${positionMs}ms")
     }
 
-    /**
-     * On cold start the activity can be created in portrait before the sensor is applied
-     * (especially with [android:configChanges] handling orientation). Re-read the display
-     * rotation and briefly lock to the matching sensor orientation so the window matches
-     * how the device is actually held.
-     */
-    private fun syncOrientationWithDisplay() {
-        window.decorView.post {
-            val rotation = display?.rotation ?: return@post
-            val sensorIsLandscape =
-                rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270
-            val config = resources.configuration
-            if (config.orientation == Configuration.ORIENTATION_UNDEFINED) return@post
-
-            val configIsLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
-            if (sensorIsLandscape == configIsLandscape) return@post
-
-            requestedOrientation = if (sensorIsLandscape) {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            }
-            window.decorView.post {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-            }
+    private fun finalizeStartupOrientation() {
+        if (!OrientationHelper.needsOrientationCorrection(this)) {
+            OrientationHelper.restoreFreeRotation(this)
+            return
         }
+
+        if (attemptedOrientationRecreate) {
+            Log.w(TAG, "Orientation mismatch persists after recreate — using sensor listener")
+            OrientationHelper.restoreFreeRotation(this)
+            return
+        }
+
+        Log.w(TAG, "Orientation mismatch at cold start — recreating activity")
+        attemptedOrientationRecreate = true
+        OrientationHelper.lockToDisplayRotation(this)
+        recreate()
     }
 
     private fun hideSystemUI() {
@@ -240,5 +236,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val STATE_ORIENTATION_RECREATED = "orientation_recreated"
     }
 }
