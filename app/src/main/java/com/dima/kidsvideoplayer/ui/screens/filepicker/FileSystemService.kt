@@ -148,6 +148,15 @@ fun listDirectoryItems(dirPath: String): List<FileSystemItem> {
     return sortedItems
 }
 
+fun listSubdirectories(dirPath: String): List<String> {
+    val dir = File(dirPath)
+    if (!dir.exists() || !dir.isDirectory || !dir.canRead()) return emptyList()
+    return dir.listFiles { file -> file.isDirectory && !file.name.startsWith(".") }
+        ?.map { it.absolutePath }
+        ?.sortedBy { it.substringAfterLast('/').lowercase() }
+        ?: emptyList()
+}
+
 fun isVideoFile(name: String): Boolean {
     val extension = name.substringAfterLast('.', "").lowercase()
     return extension in VIDEO_EXTENSIONS

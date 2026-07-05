@@ -4,8 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -20,23 +20,31 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dima.kidsvideoplayer.data.VideoEntry
 import com.dima.kidsvideoplayer.data.VideoLibraryService
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.ui.components.BounceButton
 import com.dima.kidsvideoplayer.ui.components.PinDialog
 import com.dima.kidsvideoplayer.ui.components.VerticalScrollbar
-import com.dima.kidsvideoplayer.ui.screens.dashboard.VideoListEntry
-import com.dima.kidsvideoplayer.ui.screens.dashboard.groupLibraryByWatchedFolder
-import com.dima.kidsvideoplayer.ui.screens.dashboard.isFolderSelected
+import com.dima.kidsvideoplayer.ui.screens.dashboard.buildLibraryIndexByPath
+import com.dima.kidsvideoplayer.ui.screens.dashboard.buildVideosByParentPath
+import com.dima.kidsvideoplayer.ui.screens.dashboard.isPathWithinWatchedFolders
+import com.dima.kidsvideoplayer.ui.screens.dashboard.parentBrowsePath
+import com.dima.kidsvideoplayer.ui.screens.dashboard.videoCountForFolder
+import com.dima.kidsvideoplayer.ui.screens.filepicker.listSubdirectories
 import com.dima.kidsvideoplayer.ui.theme.CardSurface
 import com.dima.kidsvideoplayer.ui.theme.DashboardBackground
 import com.dima.kidsvideoplayer.ui.theme.ExitRed
 import com.dima.kidsvideoplayer.ui.theme.FolderBlue
 import com.dima.kidsvideoplayer.ui.theme.GreenPrimary
 import com.dima.kidsvideoplayer.ui.theme.RedButton
-import kotlinx.coroutines.CoroutineScope
+import com.dima.kidsvideoplayer.utils.abbreviateFolderPath
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -61,8 +69,6 @@ fun ParentDashboardScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val watchedFolders by videoRepository.watchedFolders.collectAsStateWithLifecycle(initialValue = emptyList())
-    val expandedFolders by videoRepository.expandedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
-    val selectedFolders by videoRepository.selectedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
     val libraryState by videoLibraryService.libraryState.collectAsStateWithLifecycle()
 
     var pendingPinAction by remember { mutableStateOf<PinAction?>(null) }
@@ -70,9 +76,16 @@ fun ParentDashboardScreen(
     var pendingPlayIndex by remember { mutableStateOf(-1) }
     var pendingRemoveFolder by remember { mutableStateOf<String?>(null) }
     var showUnsupported by remember { mutableStateOf(false) }
+    var browsePath by remember { mutableStateOf<String?>(null) }
 
     val videoListState = rememberLazyListState()
     val allVideos = libraryState.videos
+
+    LaunchedEffect(watchedFolders, browsePath) {
+        if (browsePath != null && !isPathWithinWatchedFolders(browsePath!!, watchedFolders)) {
+            browsePath = null
+        }
+    }
 
     fun requestPin(action: PinAction) {
         pendingPinAction = action
@@ -104,6 +117,7 @@ fun ParentDashboardScreen(
                 TextButton(
                     onClick = {
                         showClearAllDialog = false
+                        browsePath = null
                         coroutineScope.launch { videoRepository.clearAll() }
                     }
                 ) {
@@ -126,6 +140,11 @@ fun ParentDashboardScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        if (browsePath != null &&
+                            (browsePath == folderPath || browsePath!!.startsWith("$folderPath/"))
+                        ) {
+                            browsePath = null
+                        }
                         coroutineScope.launch {
                             videoRepository.removeWatchedFolder(folderPath)
                         }
@@ -195,15 +214,13 @@ fun ParentDashboardScreen(
             DashboardVideoList(
                 watchedFolders = watchedFolders,
                 allVideos = allVideos,
-                expandedFolders = expandedFolders,
-                selectedFolders = selectedFolders,
+                browsePath = browsePath,
+                onBrowsePathChange = { browsePath = it },
                 unsupportedFiles = libraryState.unsupportedFiles,
                 inaccessibleFolders = libraryState.inaccessibleFolders,
                 showUnsupported = showUnsupported,
                 onToggleUnsupported = { showUnsupported = !showUnsupported },
                 videoListState = videoListState,
-                videoRepository = videoRepository,
-                coroutineScope = coroutineScope,
                 onRequestAddFolders = { requestPin(PinAction.ADD_VIDEOS) },
                 onPlayVideo = { pendingPlayIndex = it },
                 onRemoveFolder = { pendingRemoveFolder = it },
@@ -217,15 +234,13 @@ fun ParentDashboardScreen(
                 DashboardVideoList(
                     watchedFolders = watchedFolders,
                     allVideos = allVideos,
-                    expandedFolders = expandedFolders,
-                    selectedFolders = selectedFolders,
+                    browsePath = browsePath,
+                    onBrowsePathChange = { browsePath = it },
                     unsupportedFiles = libraryState.unsupportedFiles,
                     inaccessibleFolders = libraryState.inaccessibleFolders,
                     showUnsupported = showUnsupported,
                     onToggleUnsupported = { showUnsupported = !showUnsupported },
                     videoListState = videoListState,
-                    videoRepository = videoRepository,
-                    coroutineScope = coroutineScope,
                     onRequestAddFolders = { requestPin(PinAction.ADD_VIDEOS) },
                     onPlayVideo = { pendingPlayIndex = it },
                     onRemoveFolder = { pendingRemoveFolder = it },
@@ -340,21 +355,36 @@ private fun DashboardActionButton(
 @Composable
 private fun DashboardVideoList(
     watchedFolders: List<String>,
-    allVideos: List<com.dima.kidsvideoplayer.data.VideoEntry>,
-    expandedFolders: Set<String>,
-    selectedFolders: Set<String>,
+    allVideos: List<VideoEntry>,
+    browsePath: String?,
+    onBrowsePathChange: (String?) -> Unit,
     unsupportedFiles: List<String>,
     inaccessibleFolders: List<String>,
     showUnsupported: Boolean,
     onToggleUnsupported: () -> Unit,
     videoListState: LazyListState,
-    videoRepository: VideoRepository,
-    coroutineScope: CoroutineScope,
     onRequestAddFolders: () -> Unit,
     onPlayVideo: (Int) -> Unit,
     onRemoveFolder: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val videosByParentPath = remember(allVideos) { buildVideosByParentPath(allVideos) }
+    val libraryIndexByPath = remember(allVideos) { buildLibraryIndexByPath(allVideos) }
+
+    var subdirectories by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loadingSubdirs by remember { mutableStateOf(false) }
+
+    LaunchedEffect(browsePath) {
+        val path = browsePath ?: run {
+            subdirectories = emptyList()
+            loadingSubdirs = false
+            return@LaunchedEffect
+        }
+        loadingSubdirs = true
+        subdirectories = withContext(Dispatchers.IO) { listSubdirectories(path) }
+        loadingSubdirs = false
+    }
+
     Column(modifier = modifier) {
         if (watchedFolders.isNotEmpty()) {
             Text(
@@ -364,15 +394,9 @@ private fun DashboardVideoList(
                 color = Color.White.copy(alpha = 0.7f)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Выбрано папок: ${selectedFolders.size}",
-                fontSize = 14.sp,
-                color = if (selectedFolders.isNotEmpty()) GreenPrimary else Color.White.copy(alpha = 0.5f),
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
         }
 
-        if (inaccessibleFolders.isNotEmpty()) {
+        if (inaccessibleFolders.isNotEmpty() && browsePath == null) {
             Text(
                 text = "⚠️ Недоступно папок: ${inaccessibleFolders.size}",
                 fontSize = 13.sp,
@@ -396,49 +420,95 @@ private fun DashboardVideoList(
                 )
             }
         } else {
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                val groupedEntries = remember(allVideos, watchedFolders, expandedFolders) {
-                    groupLibraryByWatchedFolder(allVideos, watchedFolders, expandedFolders)
-                }
+            if (browsePath != null) {
+                FolderBrowseBar(
+                    currentPath = browsePath,
+                    onNavigateUp = {
+                        onBrowsePathChange(parentBrowsePath(browsePath, watchedFolders))
+                    }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
 
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 LazyColumn(
                     state = videoListState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    itemsIndexed(groupedEntries) { _, entry ->
-                        when (entry) {
-                            is VideoListEntry.FolderHeader -> WatchedFolderHeader(
-                                folderName = entry.folderName,
-                                isExpanded = entry.isExpanded,
-                                isSelected = isFolderSelected(entry.folderPath, selectedFolders),
-                                videoCount = entry.videoCount,
-                                onToggleExpand = {
-                                    val updated = if (entry.isExpanded) {
-                                        expandedFolders - entry.folderPath
-                                    } else {
-                                        expandedFolders + entry.folderPath
-                                    }
-                                    coroutineScope.launch {
-                                        videoRepository.saveExpandedFolders(updated)
-                                    }
-                                },
-                                onToggleSelection = {
-                                    coroutineScope.launch {
-                                        videoRepository.toggleFolderSelection(entry.folderPath)
-                                    }
-                                },
-                                onRemove = { onRemoveFolder(entry.folderPath) }
+                    if (browsePath == null) {
+                        items(
+                            items = watchedFolders.sorted(),
+                            key = { it }
+                        ) { folderPath ->
+                            RootFolderRow(
+                                folderName = abbreviateFolderPath(folderPath),
+                                videoCount = videoCountForFolder(allVideos, folderPath),
+                                onEnter = { onBrowsePathChange(folderPath) },
+                                onRemove = { onRemoveFolder(folderPath) }
                             )
-                            is VideoListEntry.VideoEntryItem -> VideoListItem(
-                                fileName = entry.fileName,
-                                onClick = { onPlayVideo(entry.originalIndex) }
+                        }
+                    } else {
+                        if (loadingSubdirs) {
+                            item(key = "loading") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            android.widget.ProgressBar(ctx).apply {
+                                                indeterminateTintList =
+                                                    android.content.res.ColorStateList.valueOf(0xFFFF9800.toInt())
+                                            }
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        items(
+                            items = subdirectories,
+                            key = { it }
+                        ) { subdirPath ->
+                            SubfolderRow(
+                                folderName = File(subdirPath).name,
+                                onEnter = { onBrowsePathChange(subdirPath) }
                             )
+                        }
+
+                        val videosHere = videosByParentPath[browsePath].orEmpty()
+                            .sortedBy { it.fileName.lowercase() }
+
+                        items(
+                            items = videosHere,
+                            key = { it.filePath }
+                        ) { video ->
+                            VideoListItem(
+                                fileName = video.fileName,
+                                onClick = {
+                                    libraryIndexByPath[video.filePath]?.let { onPlayVideo(it) }
+                                }
+                            )
+                        }
+
+                        if (!loadingSubdirs && subdirectories.isEmpty() && videosHere.isEmpty()) {
+                            item(key = "empty") {
+                                Text(
+                                    text = "Папка пуста",
+                                    color = Color.White.copy(alpha = 0.4f),
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
                         }
                     }
 
-                    if (unsupportedFiles.isNotEmpty()) {
-                        item {
+                    if (browsePath == null && unsupportedFiles.isNotEmpty()) {
+                        item(key = "unsupported-toggle") {
                             Spacer(modifier = Modifier.height(8.dp))
                             TextButton(onClick = onToggleUnsupported) {
                                 Text(
@@ -453,9 +523,12 @@ private fun DashboardVideoList(
                             }
                         }
                         if (showUnsupported) {
-                            items(unsupportedFiles.size) { index ->
+                            items(
+                                items = unsupportedFiles,
+                                key = { it }
+                            ) { path ->
                                 Text(
-                                    text = "⚠️ ${unsupportedFiles[index].substringAfterLast('/')}",
+                                    text = "⚠️ ${path.substringAfterLast('/')}",
                                     fontSize = 12.sp,
                                     color = Color.White.copy(alpha = 0.4f),
                                     modifier = Modifier.padding(start = 16.dp, bottom = 2.dp),
@@ -473,71 +546,122 @@ private fun DashboardVideoList(
 }
 
 @Composable
-private fun WatchedFolderHeader(
-    folderName: String,
-    isExpanded: Boolean,
-    isSelected: Boolean,
-    videoCount: Int,
-    onToggleExpand: () -> Unit,
-    onToggleSelection: () -> Unit,
-    onRemove: () -> Unit
+private fun FolderBrowseBar(
+    currentPath: String,
+    onNavigateUp: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onToggleExpand() }
-            .padding(start = 4.dp, top = 4.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        onClick = onNavigateUp,
+        shape = RoundedCornerShape(8.dp),
+        color = CardSurface
     ) {
-        Surface(
-            onClick = onToggleSelection,
-            shape = RoundedCornerShape(4.dp),
-            color = if (isSelected) GreenPrimary else Color.Gray.copy(alpha = 0.3f)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Text(text = "📁", fontSize = 20.sp)
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = if (isSelected) "✓" else "○",
-                fontSize = 16.sp,
-                color = Color.White,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                text = File(currentPath).name.ifEmpty { abbreviateFolderPath(currentPath) },
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = FolderBlue,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
         }
+    }
+}
 
-        Spacer(modifier = Modifier.width(4.dp))
-
-        Text(
-            text = if (isExpanded) "▼" else "▶",
-            fontSize = 12.sp,
-            color = FolderBlue,
-            modifier = Modifier.padding(end = 4.dp)
-        )
-
-        Text(
-            text = "📁 $folderName",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = FolderBlue,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        Text(
-            text = "$videoCount",
-            fontSize = 11.sp,
-            color = Color.White.copy(alpha = 0.5f),
-            modifier = Modifier.padding(end = 8.dp)
-        )
-
-        Surface(
-            onClick = onRemove,
-            shape = RoundedCornerShape(8.dp),
-            color = RedButton.copy(alpha = 0.2f)
+@Composable
+private fun RootFolderRow(
+    folderName: String,
+    videoCount: Int,
+    onEnter: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = CardSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEnter)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Text(text = "📁", fontSize = 22.sp)
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = " ✕ ",
-                fontSize = 16.sp,
-                color = RedButton,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                text = folderName,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = FolderBlue,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "$videoCount",
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Surface(
+                onClick = onRemove,
+                shape = RoundedCornerShape(8.dp),
+                color = RedButton.copy(alpha = 0.2f)
+            ) {
+                Text(
+                    text = " ✕ ",
+                    fontSize = 16.sp,
+                    color = RedButton,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubfolderRow(
+    folderName: String,
+    onEnter: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = CardSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEnter)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "📁", fontSize = 20.sp)
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = folderName,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "›",
+                fontSize = 20.sp,
+                color = FolderBlue
             )
         }
     }
@@ -553,13 +677,12 @@ private fun VideoListItem(
         color = CardSurface,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp)
             .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = "🎬", fontSize = 16.sp)

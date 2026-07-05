@@ -16,7 +16,7 @@ class VideoListGroupingTest {
     )
 
     @Test
-    fun groupLibraryByWatchedFolder_groupsVideosUnderFolders() {
+    fun videoCountForFolder_countsVideosInRootFolder() {
         val folderA = "/storage/emulated/0/Movies"
         val folderB = "/storage/emulated/0/Anime"
         val videos = listOf(
@@ -25,24 +25,59 @@ class VideoListGroupingTest {
             video("$folderB/c.mp4", folderB, "c.mp4")
         )
 
-        val entries = groupLibraryByWatchedFolder(
-            videos = videos,
-            watchedFolders = listOf(folderB, folderA),
-            expandedFolders = setOf(folderA)
-        )
-
-        assertThat(entries).hasSize(4)
-        assertThat(entries[0]).isInstanceOf(VideoListEntry.FolderHeader::class.java)
-        assertThat((entries[0] as VideoListEntry.FolderHeader).folderPath).isEqualTo(folderB)
-        assertThat(entries[1]).isInstanceOf(VideoListEntry.FolderHeader::class.java)
-        assertThat((entries[1] as VideoListEntry.FolderHeader).folderPath).isEqualTo(folderA)
-        assertThat(entries[2]).isInstanceOf(VideoListEntry.VideoEntryItem::class.java)
-        assertThat((entries[2] as VideoListEntry.VideoEntryItem).fileName).isEqualTo("a.mp4")
+        assertThat(videoCountForFolder(videos, folderA)).isEqualTo(2)
+        assertThat(videoCountForFolder(videos, folderB)).isEqualTo(1)
+        assertThat(videoCountForFolder(videos, "/missing")).isEqualTo(0)
     }
 
     @Test
-    fun isFolderSelected_returnsTrueWhenFolderInSet() {
-        assertThat(isFolderSelected("/storage/Movies", setOf("/storage/Movies"))).isTrue()
-        assertThat(isFolderSelected("/storage/Movies", emptySet())).isFalse()
+    fun buildVideosByParentPath_groupsByImmediateParent() {
+        val root = "/storage/emulated/0/Movies"
+        val sub = "$root/Season1"
+        val videos = listOf(
+            video("$root/trailer.mp4", root, "trailer.mp4"),
+            video("$sub/ep1.mp4", root, "ep1.mp4"),
+            video("$sub/ep2.mp4", root, "ep2.mp4")
+        )
+
+        val byParent = buildVideosByParentPath(videos)
+
+        assertThat(byParent[root]).hasSize(1)
+        assertThat(byParent[sub]).hasSize(2)
+    }
+
+    @Test
+    fun buildLibraryIndexByPath_mapsFilePathToIndex() {
+        val folder = "/storage/emulated/0/Movies"
+        val videos = listOf(
+            video("$folder/a.mp4", folder, "a.mp4"),
+            video("$folder/b.mp4", folder, "b.mp4")
+        )
+
+        val indexByPath = buildLibraryIndexByPath(videos)
+
+        assertThat(indexByPath["$folder/a.mp4"]).isEqualTo(0)
+        assertThat(indexByPath["$folder/b.mp4"]).isEqualTo(1)
+    }
+
+    @Test
+    fun parentBrowsePath_navigatesWithinWatchedTree() {
+        val root = "/storage/emulated/0/Movies"
+        val sub = "$root/Anime"
+        val watched = listOf(root)
+
+        assertThat(parentBrowsePath(sub, watched)).isEqualTo(root)
+        assertThat(parentBrowsePath(root, watched)).isNull()
+        assertThat(parentBrowsePath("/other/path", watched)).isNull()
+    }
+
+    @Test
+    fun isPathWithinWatchedFolders_checksPrefix() {
+        val root = "/storage/emulated/0/Movies"
+        val watched = listOf(root)
+
+        assertThat(isPathWithinWatchedFolders(root, watched)).isTrue()
+        assertThat(isPathWithinWatchedFolders("$root/Sub", watched)).isTrue()
+        assertThat(isPathWithinWatchedFolders("/other", watched)).isFalse()
     }
 }

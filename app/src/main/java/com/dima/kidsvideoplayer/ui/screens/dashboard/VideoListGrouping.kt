@@ -1,60 +1,24 @@
 package com.dima.kidsvideoplayer.ui.screens.dashboard
 
 import com.dima.kidsvideoplayer.data.VideoEntry
-import com.dima.kidsvideoplayer.utils.abbreviateFolderPath
+import java.io.File
 
-sealed interface VideoListEntry {
-    data class FolderHeader(
-        val folderName: String,
-        val folderPath: String,
-        val isExpanded: Boolean,
-        val videoCount: Int
-    ) : VideoListEntry
+fun videoCountForFolder(videos: List<VideoEntry>, folderPath: String): Int =
+    videos.count { it.sourceFolder == folderPath }
 
-    data class VideoEntryItem(
-        val uriString: String,
-        val fileName: String,
-        val originalIndex: Int
-    ) : VideoListEntry
+fun buildVideosByParentPath(videos: List<VideoEntry>): Map<String, List<VideoEntry>> =
+    videos.groupBy { File(it.filePath).parent.orEmpty() }
+
+fun buildLibraryIndexByPath(videos: List<VideoEntry>): Map<String, Int> =
+    videos.withIndex().associate { (index, entry) -> entry.filePath to index }
+
+fun parentBrowsePath(currentPath: String, watchedFolders: List<String>): String? {
+    val root = watchedFolders.find { currentPath == it || currentPath.startsWith("$it/") }
+        ?: return null
+    if (currentPath == root) return null
+    val parent = File(currentPath).parent ?: return null
+    return if (parent == root || parent.startsWith("$root/")) parent else root
 }
 
-fun groupLibraryByWatchedFolder(
-    videos: List<VideoEntry>,
-    watchedFolders: List<String>,
-    expandedFolders: Set<String>
-): List<VideoListEntry> {
-    if (watchedFolders.isEmpty()) return emptyList()
-
-    val videosByFolder = videos.groupBy { it.sourceFolder }
-    val uriIndexMap = videos.withIndex().associate { (index, entry) -> entry.uriString to index }
-    val result = mutableListOf<VideoListEntry>()
-
-    watchedFolders.sorted().forEach { folderPath ->
-        val folderVideos = videosByFolder[folderPath].orEmpty()
-        result.add(
-            VideoListEntry.FolderHeader(
-                folderName = abbreviateFolderPath(folderPath),
-                folderPath = folderPath,
-                isExpanded = expandedFolders.contains(folderPath),
-                videoCount = folderVideos.size
-            )
-        )
-
-        if (expandedFolders.contains(folderPath)) {
-            folderVideos.sortedBy { it.fileName.lowercase() }.forEach { entry ->
-                result.add(
-                    VideoListEntry.VideoEntryItem(
-                        uriString = entry.uriString,
-                        fileName = entry.fileName,
-                        originalIndex = uriIndexMap[entry.uriString] ?: 0
-                    )
-                )
-            }
-        }
-    }
-
-    return result
-}
-
-fun isFolderSelected(folderPath: String, selectedFolders: Set<String>): Boolean =
-    folderPath in selectedFolders
+fun isPathWithinWatchedFolders(path: String, watchedFolders: List<String>): Boolean =
+    watchedFolders.any { path == it || path.startsWith("$it/") }

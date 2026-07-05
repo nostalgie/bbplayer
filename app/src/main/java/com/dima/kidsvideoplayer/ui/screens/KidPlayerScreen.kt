@@ -37,14 +37,14 @@ fun KidPlayerScreen(
     onPendingIndexConsumed: () -> Unit = {}
 ) {
     val secretDoorTouchSizePx = with(LocalDensity.current) { 72.dp.toPx() }
-    val selectedFolders by videoRepository.selectedFolders.collectAsStateWithLifecycle(initialValue = emptySet())
     val libraryState by videoLibraryService.libraryState.collectAsStateWithLifecycle()
     val watchedFolders by videoRepository.watchedFolders.collectAsStateWithLifecycle(initialValue = emptyList())
+    val watchedFolderSet = remember(watchedFolders) { watchedFolders.toSet() }
 
-    val playableUris = remember(libraryState.videos, selectedFolders) {
-        if (selectedFolders.isEmpty()) emptyList()
+    val playableUris = remember(libraryState.videos, watchedFolderSet) {
+        if (watchedFolderSet.isEmpty()) emptyList()
         else libraryState.videos
-            .filter { it.sourceFolder in selectedFolders }
+            .filter { it.sourceFolder in watchedFolderSet }
             .map { it.uriString }
     }
 
