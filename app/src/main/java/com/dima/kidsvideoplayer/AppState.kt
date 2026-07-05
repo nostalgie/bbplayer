@@ -34,6 +34,10 @@ class AppState(
     var kioskPausedForParent: Boolean by mutableStateOf(false)
         internal set
 
+    /** True while returning to home — blocks onResume from re-entering kiosk. */
+    var exitingToHome: Boolean by mutableStateOf(false)
+        internal set
+
     var pendingStartVideoIndex: Int by mutableStateOf(-1)
         internal set
 
@@ -48,8 +52,8 @@ class AppState(
     }
 
     fun suspendKiosk() {
+        exitingToHome = true
         isLockTaskActive = false
-        kioskPausedForParent = false
         onSuspendKiosk()
     }
 }

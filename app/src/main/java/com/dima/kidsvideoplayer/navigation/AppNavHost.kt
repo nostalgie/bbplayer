@@ -39,7 +39,10 @@ fun AppNavHost(
     // Auto-enter kiosk after first frame so libVLC can initialize first.
     LaunchedEffect(Unit) {
         delay(KIOSK_START_DELAY_MS)
-        if (!appState.kioskPausedForParent && !appState.lockTaskManager.isLockTaskRunning()) {
+        if (!appState.exitingToHome &&
+            !appState.kioskPausedForParent &&
+            !appState.lockTaskManager.isLockTaskRunning()
+        ) {
             appState.enterKidMode()
         }
     }

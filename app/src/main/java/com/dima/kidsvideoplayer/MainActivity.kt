@@ -139,6 +139,7 @@ class MainActivity : ComponentActivity() {
 
         val state = appState
         if (state != null &&
+            !state.exitingToHome &&
             !state.kioskPausedForParent &&
             lockTaskManager.isDeviceOwner() &&
             !lockTaskManager.isLockTaskRunning()
@@ -178,13 +179,8 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Suspending kiosk — returning to home (Device Owner retained)")
         exitKidMode()
         lockTaskManager.removeKioskPolicies()
-        startActivity(
-            Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-        )
-        finishAffinity()
+        moveTaskToBack(true)
+        finish()
     }
 
     private fun savePlaybackState() {

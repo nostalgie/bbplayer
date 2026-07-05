@@ -28,10 +28,18 @@ echo "    Android: $(adb shell getprop ro.build.version.release 2>/dev/null || e
 echo "    Manufacturer: $(adb shell getprop ro.product.manufacturer 2>/dev/null || echo unknown)"
 
 echo "==> Installing APK..."
-adb install -r "$APK"
+adb install -r -t "$APK"
 
 echo "==> Setting Device Owner (requires no accounts on device)..."
-if adb shell dpm set-device-owner "$ADMIN" 2>&1; then
+OWNERS=$(adb shell dpm list-owners 2>/dev/null || true)
+if echo "$OWNERS" | grep -q "$PKG"; then
+    echo "    Device Owner already set ($PKG). Skipping."
+elif echo "$OWNERS" | grep -qi "owner found"; then
+    echo ""
+    echo "ERROR: Another Device Owner is already set."
+    echo "  Factory reset required before deploying this app as Device Owner."
+    exit 1
+elif adb shell dpm set-device-owner "$ADMIN" 2>&1; then
     echo "    Device Owner set successfully."
 else
     echo ""
@@ -47,9 +55,9 @@ adb shell am start -n "$ACTIVITY"
 echo ""
 echo "Done. Expected behavior:"
 echo "  - App auto-starts in full kiosk (Lock Task + Device Owner policies)"
-echo "  - Parent access: long press gear icon (top-right) 3 seconds"
-echo "  - Exit to home: parent screen → 'Выход' → PIN 1111 (kiosk restores on next launch)"
-echo "  - Emergency ADB exit:"
+echo "  - Parent access: long press gear icon (top-right) 3 seconds → PIN 1111"
+echo "  - Exit to home: parent screen → 'Выход' (kiosk restores on next launch)"
+echo "  - Emergency ADB uninstall (debug APK only):"
 echo "      adb shell dpm remove-active-admin $ADMIN"
 echo "      adb uninstall $PKG"
 echo "  - Grant 'All files access' if prompted (Android 13+)"

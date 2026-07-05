@@ -272,8 +272,10 @@ chmod +x gradlew
 Телефон должен быть подключён, `adb devices` показывает `device`.
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Debug APK помечен `testOnly` (для ADB-снятия Device Owner) — флаг **`-t`** обязателен.
 
 **Успех:**
 
@@ -287,8 +289,10 @@ Success
 
 ```bash
 adb uninstall com.dima.kidsvideoplayer
-adb install app/build/outputs/apk/debug/app-debug.apk
+adb install -t app/build/outputs/apk/debug/app-debug.apk
 ```
+
+**Если пишет `INSTALL_FAILED_TEST_ONLY`:** добавьте флаг `-t` к команде `adb install`.
 
 ---
 
@@ -329,6 +333,7 @@ adb shell dpm list-owners
 |--------|---------|---------|
 | `not allowed` | На телефоне есть аккаунты | Удалить все аккаунты или сброс (раздел 3.3) |
 | `already has an owner` | Уже назначен другой владелец | Сброс телефона |
+| `device owner is already set` | DO уже назначен на наше приложение | Нормально при повторном деплое; проверьте `dpm list-owners` |
 | `component not found` | APK не установлен | Сначала `adb install` (раздел 6) |
 
 ### 7.3. Если Device Owner невозможен (не хотите сбрасывать)
@@ -375,26 +380,28 @@ adb logcat -d -s LockTaskManager | tail -5
 
 1. Найдите на экране плеера **иконку шестерёнки** в **верхнем правом углу**
 2. **Удерживайте палец 3 секунды** (long press)
-3. Откроется **родительский экран** (список видео, кнопки управления) — PIN не требуется
+3. Введите PIN (**1111**)
+4. Откроется **родительский экран** (список видео, кнопки управления)
 
-PIN по умолчанию: **`1111`** (нужен для выхода из приложения и добавления видео).
+PIN по умолчанию: **`1111`** (нужен только для входа в родительский режим).
 
 ### 8.4. Выход из приложения (только для родителя)
 
-1. Удерживайте **шестерёнку** 3 секунды → родительский экран
+1. Удерживайте **шестерёнку** 3 секунды → введите PIN → родительский экран
 2. Нажмите **«Выход»**
-3. Введите PIN (**1111**)
 
 Приложение временно снимает киоск и возвращает на рабочий стол. Статус Device Owner сохраняется — при следующем запуске с иконки киоск включится снова автоматически.
 
 ### 8.5. Полное удаление APK (ADB)
 
-Если приложение зависло или забыли PIN — с компьютера:
+Debug APK помечен `testOnly`, поэтому `remove-active-admin` работает:
 
 ```bash
 adb shell dpm remove-active-admin com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver
 adb uninstall com.dima.kidsvideoplayer
 ```
+
+Release-сборка не поддерживает `remove-active-admin` — только сброс (§8.6).
 
 ### 8.6. Аварийный сброс (без ПК)
 
@@ -432,13 +439,12 @@ adb push /home/dima/Videos/cartoon.mp4 /sdcard/Movies/Kids/
 
 ### 9.3. Добавить видео через приложение
 
-1. Удерживайте **шестерёнку** 3 секунды → родительский экран (без PIN)
+1. Удерживайте **шестерёнку** 3 секунды → введите PIN **1111** → родительский экран
 2. Нажмите **«Добавить»** (или «Нажмите, чтобы выбрать видео», если список пуст)
-3. Введите PIN **1111**
-4. Откройте **файловый пикер** и перейдите в папку с видео (например `Movies/Kids` или `Download`)
-5. Выберите видеофайлы или целую папку
-6. Вернитесь в детский режим (кнопка «Назад» / выбор видео для воспроизведения)
-7. Видео должно начать играть
+3. Откройте **файловый пикер** и перейдите в папку с видео (например `Movies/Kids` или `Download`)
+4. Выберите видеофайлы или целую папку
+5. Вернитесь в детский режим (кнопка «Назад» / выбор видео для воспроизведения)
+6. Видео должно начать играть
 
 ### 9.4. Проверка воспроизведения
 
@@ -554,7 +560,7 @@ Windows может не видеть телефон без драйвера. У�
 cd C:\path\to\video-game
 .\gradlew.bat assembleDebug
 adb devices
-adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb install -r -t app\build\outputs\apk\debug\app-debug.apk
 adb shell dpm set-device-owner com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver
 adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
 ```
@@ -573,7 +579,7 @@ adb devices
 cd /home/dima/video-game && ./gradlew assembleDebug
 
 # Установить
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 
 # Device Owner
 adb shell dpm set-device-owner com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver
@@ -586,6 +592,6 @@ adb shell am start -n com.dima.kidsvideoplayer/.MainActivity
 ```
 
 **Родительский PIN:** `1111`  
-**Секретная дверь:** long press на шестерёнку вверху справа (3 секунды, без PIN)  
-**PIN нужен для:** выхода из приложения и добавления видео  
-**Полное удаление APK через ADB:** `adb shell dpm remove-active-admin com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver`
+**Секретная дверь:** long press на шестерёнку вверху справа (3 секунды) → PIN  
+**PIN нужен для:** входа в родительский режим (дальше внутри — без PIN)  
+**Полное удаление (debug APK):** `adb shell dpm remove-active-admin com.dima.kidsvideoplayer/.admin.MyDeviceAdminReceiver` → `adb uninstall com.dima.kidsvideoplayer`

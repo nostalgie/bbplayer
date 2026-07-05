@@ -26,7 +26,6 @@ import com.dima.kidsvideoplayer.data.VideoEntry
 import com.dima.kidsvideoplayer.data.VideoLibraryService
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.ui.components.BounceButton
-import com.dima.kidsvideoplayer.ui.components.PinDialog
 import com.dima.kidsvideoplayer.ui.components.VerticalScrollbar
 import com.dima.kidsvideoplayer.ui.screens.dashboard.buildLibraryIndexByPath
 import com.dima.kidsvideoplayer.ui.screens.dashboard.buildVideosByParentPath
@@ -57,11 +56,6 @@ private val FOLDER_ROW_ICON_SIZE = 20.sp
 private val FOLDER_ROW_VERTICAL_PADDING = 10.dp
 private val FOLDER_ROW_HORIZONTAL_PADDING = 12.dp
 
-private enum class PinAction {
-    EXIT,
-    ADD_VIDEOS
-}
-
 @Composable
 fun ParentDashboardScreen(
     videoRepository: VideoRepository,
@@ -75,7 +69,6 @@ fun ParentDashboardScreen(
     val watchedFolders by videoRepository.watchedFolders.collectAsStateWithLifecycle(initialValue = emptyList())
     val libraryState by videoLibraryService.libraryState.collectAsStateWithLifecycle()
 
-    var pendingPinAction by remember { mutableStateOf<PinAction?>(null) }
     var showClearAllDialog by remember { mutableStateOf(false) }
     var pendingPlayIndex by remember { mutableStateOf(-1) }
     var pendingRemoveFolder by remember { mutableStateOf<String?>(null) }
@@ -89,27 +82,6 @@ fun ParentDashboardScreen(
         if (browsePath != null && !isPathWithinWatchedFolders(browsePath!!, watchedFolders)) {
             browsePath = null
         }
-    }
-
-    fun requestPin(action: PinAction) {
-        pendingPinAction = action
-    }
-
-    pendingPinAction?.let { action ->
-        PinDialog(
-            title = when (action) {
-                PinAction.EXIT -> "Введите ПИН для выхода"
-                PinAction.ADD_VIDEOS -> "Введите ПИН для добавления папок"
-            },
-            onDismiss = { pendingPinAction = null },
-            onPinCorrect = {
-                when (action) {
-                    PinAction.EXIT -> onExit()
-                    PinAction.ADD_VIDEOS -> onNavigateToFilePicker()
-                }
-                pendingPinAction = null
-            }
-        )
     }
 
     if (showClearAllDialog) {
@@ -210,9 +182,9 @@ fun ParentDashboardScreen(
                 folderCount = watchedFolders.size,
                 horizontal = true,
                 onBackToKidMode = onBackToKidMode,
-                onAddFolders = { requestPin(PinAction.ADD_VIDEOS) },
+                onAddFolders = onNavigateToFilePicker,
                 onClearAll = { showClearAllDialog = true },
-                onExit = { requestPin(PinAction.EXIT) },
+                onExit = onExit,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -226,7 +198,7 @@ fun ParentDashboardScreen(
                 showUnsupported = showUnsupported,
                 onToggleUnsupported = { showUnsupported = !showUnsupported },
                 videoListState = videoListState,
-                onRequestAddFolders = { requestPin(PinAction.ADD_VIDEOS) },
+                onRequestAddFolders = onNavigateToFilePicker,
                 onPlayVideo = { pendingPlayIndex = it },
                 onRemoveFolder = { pendingRemoveFolder = it },
                 modifier = Modifier.fillMaxWidth().weight(1f)
@@ -246,7 +218,7 @@ fun ParentDashboardScreen(
                     showUnsupported = showUnsupported,
                     onToggleUnsupported = { showUnsupported = !showUnsupported },
                     videoListState = videoListState,
-                    onRequestAddFolders = { requestPin(PinAction.ADD_VIDEOS) },
+                    onRequestAddFolders = onNavigateToFilePicker,
                     onPlayVideo = { pendingPlayIndex = it },
                     onRemoveFolder = { pendingRemoveFolder = it },
                     modifier = Modifier.weight(1f)
@@ -255,9 +227,9 @@ fun ParentDashboardScreen(
                     folderCount = watchedFolders.size,
                     horizontal = false,
                     onBackToKidMode = onBackToKidMode,
-                    onAddFolders = { requestPin(PinAction.ADD_VIDEOS) },
+                    onAddFolders = onNavigateToFilePicker,
                     onClearAll = { showClearAllDialog = true },
-                    onExit = { requestPin(PinAction.EXIT) }
+                    onExit = onExit
                 )
             }
         }

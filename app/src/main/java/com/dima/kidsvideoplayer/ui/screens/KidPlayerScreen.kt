@@ -22,6 +22,7 @@ import com.dima.kidsvideoplayer.data.PlaybackStateRepository
 import com.dima.kidsvideoplayer.data.VideoLibraryService
 import com.dima.kidsvideoplayer.data.VideoRepository
 import com.dima.kidsvideoplayer.player.VideoPlayerManager
+import com.dima.kidsvideoplayer.ui.components.PinDialog
 import com.dima.kidsvideoplayer.ui.screens.kidplayer.PlayerControlsOverlay
 import com.dima.kidsvideoplayer.ui.screens.kidplayer.SecretDoorGesture
 import kotlinx.coroutines.delay
@@ -114,6 +115,18 @@ fun KidPlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var controlsInteraction by remember { mutableStateOf(0) }
     var isPlaying by remember { mutableStateOf(videoPlayerManager.isPlaying) }
+    var showParentPin by remember { mutableStateOf(false) }
+
+    if (showParentPin) {
+        PinDialog(
+            title = "Введите ПИН для родительского режима",
+            onDismiss = { showParentPin = false },
+            onPinCorrect = {
+                showParentPin = false
+                onSecretDoorActivated()
+            }
+        )
+    }
 
     LaunchedEffect(videoPlayerManager) {
         while (true) {
@@ -284,7 +297,7 @@ fun KidPlayerScreen(
         }
 
         SecretDoorGesture(
-            onActivated = onSecretDoorActivated,
+            onActivated = { showParentPin = true },
             modifier = Modifier.align(Alignment.TopEnd)
         )
     }
