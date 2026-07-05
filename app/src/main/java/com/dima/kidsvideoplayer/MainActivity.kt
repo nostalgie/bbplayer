@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     private var startupOrientationListener: OrientationEventListener? = null
     private var attemptedOrientationRecreate = false
     private var lastHomeRedirectElapsed = 0L
+    private var pendingResetToKidMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         attemptedOrientationRecreate =
@@ -100,7 +101,13 @@ class MainActivity : ComponentActivity() {
                         onSuspendKiosk = { suspendKiosk() }
                     )
 
-                    SideEffect { appState = state }
+                    SideEffect {
+                        appState = state
+                        if (pendingResetToKidMode) {
+                            state.resetToKidMode = true
+                            pendingResetToKidMode = false
+                        }
+                    }
 
                     AppNavHost(
                         navController = navController,
@@ -146,7 +153,6 @@ class MainActivity : ComponentActivity() {
         val state = appState
         if (state != null &&
             !state.exitingToHome &&
-            !state.kioskPausedForParent &&
             lockTaskManager.isDeviceOwner() &&
             !lockTaskManager.isLockTaskRunning()
         ) {
@@ -194,7 +200,13 @@ class MainActivity : ComponentActivity() {
         if (intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true) {
             app.suspendedFromKiosk = false
             app.cachedExternalLauncher = null
-            appState?.exitingToHome = false
+            val state = appState
+            state?.exitingToHome = false
+            if (state != null) {
+                state.resetToKidMode = true
+            } else {
+                pendingResetToKidMode = true
+            }
             return
         }
         if (app.suspendedFromKiosk && LauncherHelper.isHomeOnlyIntent(intent)) {

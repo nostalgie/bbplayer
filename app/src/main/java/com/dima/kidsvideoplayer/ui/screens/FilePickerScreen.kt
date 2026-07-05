@@ -37,7 +37,8 @@ import java.io.File
 @Composable
 fun FilePickerScreen(
     videoRepository: VideoRepository,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenExternalSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -138,6 +139,7 @@ fun FilePickerScreen(
         PermissionRequestScreen(
             onRequestPermission = {
                 if (StoragePermissionHelper.needsManageAllFilesAccess()) {
+                    onOpenExternalSettings()
                     try {
                         val intent = Intent(
                             Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,

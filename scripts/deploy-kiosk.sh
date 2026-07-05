@@ -50,7 +50,7 @@ else
 fi
 
 echo "==> Launching app..."
-adb shell am start -n "$ACTIVITY"
+adb shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$ACTIVITY"
 
 echo ""
 echo "Done. Expected behavior:"

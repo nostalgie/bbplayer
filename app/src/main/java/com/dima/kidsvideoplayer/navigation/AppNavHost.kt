@@ -36,11 +36,20 @@ fun AppNavHost(
     navController: NavHostController,
     appState: AppState
 ) {
+    LaunchedEffect(appState.resetToKidMode) {
+        if (appState.resetToKidMode) {
+            navController.navigate(Routes.KID_PLAYER) {
+                popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                launchSingleTop = true
+            }
+            appState.resetToKidMode = false
+        }
+    }
+
     // Auto-enter kiosk after first frame so libVLC can initialize first.
     LaunchedEffect(Unit) {
         delay(KIOSK_START_DELAY_MS)
         if (!appState.exitingToHome &&
-            !appState.kioskPausedForParent &&
             !appState.lockTaskManager.isLockTaskRunning()
         ) {
             appState.enterKidMode()
@@ -52,16 +61,12 @@ fun AppNavHost(
         startDestination = Routes.KID_PLAYER
     ) {
         composable(Routes.KID_PLAYER) {
-            LaunchedEffect(Unit) { appState.kioskPausedForParent = false }
-
             KidPlayerScreen(
                 videoRepository = appState.videoRepository,
                 videoLibraryService = appState.videoLibraryService,
                 videoPlayerManager = appState.videoPlayerManager,
                 playbackStateRepository = appState.playbackStateRepository,
                 onSecretDoorActivated = {
-                    appState.kioskPausedForParent = true
-                    appState.exitKidMode()
                     appState.videoPlayerManager.pause()
                     navController.navigate(Routes.PARENT_DASHBOARD) {
                         popUpTo(Routes.KID_PLAYER) { inclusive = false }
@@ -73,39 +78,32 @@ fun AppNavHost(
         }
 
         composable(Routes.PARENT_DASHBOARD) {
-            LaunchedEffect(Unit) { appState.kioskPausedForParent = true }
-
             ParentDashboardScreen(
                 videoRepository = appState.videoRepository,
                 videoLibraryService = appState.videoLibraryService,
                 onBackToKidMode = {
-                    appState.kioskPausedForParent = false
                     appState.videoPlayerManager.play()
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
-                    appState.enterKidMode()
                 },
                 onNavigateToFilePicker = {
                     navController.navigate(Routes.FILE_PICKER)
                 },
                 onPlayVideo = { index ->
                     appState.pendingStartVideoIndex = index
-                    appState.kioskPausedForParent = false
                     navController.popBackStack(Routes.KID_PLAYER, inclusive = false)
-                    appState.enterKidMode()
                 },
                 onExit = { appState.suspendKiosk() }
             )
         }
 
         composable(Routes.FILE_PICKER) {
-            LaunchedEffect(Unit) { appState.kioskPausedForParent = true }
-
             FilePickerScreen(
                 videoRepository = appState.videoRepository,
                 onBack = {
                     appState.videoPlayerManager.play()
                     navController.popBackStack(Routes.PARENT_DASHBOARD, inclusive = false)
-                }
+                },
+                onOpenExternalSettings = { appState.exitKidMode() }
             )
         }
     }

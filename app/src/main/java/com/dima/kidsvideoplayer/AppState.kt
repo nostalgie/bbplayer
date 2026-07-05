@@ -30,13 +30,12 @@ class AppState(
     var isLockTaskActive: Boolean by mutableStateOf(false)
         internal set
 
-    /** True while parent dashboard or file picker is open — kiosk stays off. */
-    var kioskPausedForParent: Boolean by mutableStateOf(false)
-        internal set
-
     /** True while returning to home — blocks onResume from re-entering kiosk. */
     var exitingToHome: Boolean by mutableStateOf(false)
         internal set
+
+    /** Set when app is opened via launcher icon — navigate back to kid player. */
+    var resetToKidMode: Boolean by mutableStateOf(false)
 
     var pendingStartVideoIndex: Int by mutableStateOf(-1)
         internal set

@@ -37,13 +37,9 @@ class AppStateTest {
     }
 
     @Test
-    fun suspendKiosk_doesNotResetKioskPausedForParent() {
+    fun resetToKidMode_defaultsToFalse() {
         val state = createState()
-        state.kioskPausedForParent = true
-
-        state.suspendKiosk()
-
-        assertThat(state.kioskPausedForParent).isTrue()
+        assertThat(state.resetToKidMode).isFalse()
     }
 
     @Test
